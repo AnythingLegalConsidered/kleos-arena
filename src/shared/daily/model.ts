@@ -16,10 +16,34 @@ import {
 } from './types';
 
 export const GODS: readonly GodDefinition[] = [
-  { id: 'ares', name: 'Arès', attribute: 'force', bonus: 2, description: '+2 Force pour tous' },
-  { id: 'athena', name: 'Athéna', attribute: 'resilience', bonus: 2, description: '+2 Résilience pour tous' },
-  { id: 'hermes', name: 'Hermès', attribute: 'agility', bonus: 2, description: '+2 Agilité pour tous' },
-  { id: 'nike', name: 'Niké', attribute: 'all', bonus: 1, description: '+1 à tous les attributs' },
+  {
+    id: 'ares',
+    name: 'Arès',
+    attribute: 'force',
+    bonus: 2,
+    description: '+2 Force pour tous',
+  },
+  {
+    id: 'athena',
+    name: 'Athéna',
+    attribute: 'resilience',
+    bonus: 2,
+    description: '+2 Résilience pour tous',
+  },
+  {
+    id: 'hermes',
+    name: 'Hermès',
+    attribute: 'agility',
+    bonus: 2,
+    description: '+2 Agilité pour tous',
+  },
+  {
+    id: 'nike',
+    name: 'Niké',
+    attribute: 'all',
+    bonus: 1,
+    description: '+1 à tous les attributs',
+  },
 ];
 
 const RED_POSITIONS: readonly Vec2[] = [
@@ -91,7 +115,9 @@ export function enterArena(
   team: TeamSnapshot,
   ghosts: readonly TeamSnapshot[] = []
 ): ArenaEntry {
-  const existing = arena.entries.find((entry) => entry.team.ownerId === team.ownerId);
+  const existing = arena.entries.find(
+    (entry) => entry.team.ownerId === team.ownerId
+  );
   if (existing) return existing;
   if (arena.status !== 'open') throw new Error('arena is resolved');
 
@@ -99,7 +125,9 @@ export function enterArena(
     .filter((candidate) => candidate.ownerId !== team.ownerId)
     .sort((a, b) => a.id.localeCompare(b.id));
   const seed = hashSeed(`${arena.day}:qualifier:${team.ownerId}`);
-  const opponent = candidates[seed % candidates.length] ?? createBotSnapshot(arena.day, seed % 32);
+  const opponent =
+    candidates[seed % candidates.length] ??
+    createBotSnapshot(arena.day, seed % 32);
   const qualifier = runQualifier(team, opponent, godById(arena.godId), seed);
   const entry = { team, qualifier };
   arena.entries.push(entry);
@@ -111,7 +139,8 @@ export function resolveArena(arena: DailyArena): DailyArena {
 
   const teams = arena.entries.map((entry) => entry.team);
   const bracketSize = nextPowerOfTwo(Math.max(MIN_BRACKET_SIZE, teams.length));
-  for (let i = teams.length; i < bracketSize; i++) teams.push(createBotSnapshot(arena.day, i));
+  for (let i = teams.length; i < bracketSize; i++)
+    teams.push(createBotSnapshot(arena.day, i));
   shuffleDeterministically(teams, hashSeed(`${arena.day}:bracket`));
 
   const totalRounds = Math.log2(bracketSize);
@@ -125,7 +154,9 @@ export function resolveArena(arena: DailyArena): DailyArena {
     for (let index = 0; index < roundTeams.length; index += 2) {
       const teamA = roundTeams[index]!;
       const teamB = roundTeams[index + 1]!;
-      const seed = hashSeed(`${arena.day}:round:${round}:match:${index / 2}:${teamA.id}:${teamB.id}`);
+      const seed = hashSeed(
+        `${arena.day}:round:${round}:match:${index / 2}:${teamA.id}:${teamB.id}`
+      );
       const config = battleConfig(teamA, teamB, godById(arena.godId), seed);
       const result = simulate(config);
       const winner = pickWinner(teamA, teamB, result, seed);
@@ -154,7 +185,9 @@ export function resolveArena(arena: DailyArena): DailyArena {
   arena.standings = standings;
   arena.settlements = standings
     .filter((standing) => standing.kind === 'player')
-    .map((standing) => settlementFor(standing, injuries.get(standing.teamId) ?? {}));
+    .map((standing) =>
+      settlementFor(standing, injuries.get(standing.teamId) ?? {})
+    );
   arena.status = 'resolved';
   return arena;
 }
@@ -168,6 +201,22 @@ export function battleConfig(
   const red = teamUnits(teamA, 'red', RED_POSITIONS, god);
   const blue = teamUnits(teamB, 'blue', BLUE_POSITIONS, god);
   return { seed, units: [...red, ...blue] };
+}
+
+export function applySettlement(
+  stable: Stable,
+  settlement: ArenaSettlement
+): void {
+  if (stable.ownerId !== settlement.ownerId)
+    throw new Error('settlement owner mismatch');
+  stable.gold += settlement.gold;
+  stable.favor += settlement.favor;
+  for (const gladiator of stable.roster) {
+    gladiator.injury = Math.max(
+      gladiator.injury,
+      settlement.injuries[gladiator.id] ?? 0
+    );
+  }
 }
 
 function runQualifier(
@@ -195,12 +244,19 @@ function teamUnits(
   god: GodDefinition
 ): UnitSpec[] {
   return team.roster.map((gladiator, index) => {
-    const unit = gladiatorToUnitSpec(gladiator, teamId, positions[index] ?? positions[positions.length - 1]!);
+    const unit = gladiatorToUnitSpec(
+      gladiator,
+      teamId,
+      positions[index] ?? positions[positions.length - 1]!
+    );
     return { ...unit, attributes: modifiedAttributes(unit, god) };
   });
 }
 
-function modifiedAttributes(unit: UnitSpec, god: GodDefinition): UnitSpec['attributes'] {
+function modifiedAttributes(
+  unit: UnitSpec,
+  god: GodDefinition
+): UnitSpec['attributes'] {
   const attributes = { ...unit.attributes };
   if (god.attribute === 'all') {
     attributes.force += god.bonus;
@@ -228,7 +284,10 @@ function pickWinner(
 }
 
 function totalHp(result: BattleResult, team: TeamSnapshot): number {
-  return team.roster.reduce((sum, gladiator) => sum + (result.finalHp[gladiator.id] ?? 0), 0);
+  return team.roster.reduce(
+    (sum, gladiator) => sum + (result.finalHp[gladiator.id] ?? 0),
+    0
+  );
 }
 
 function mergeInjuries(
@@ -248,7 +307,8 @@ function mergeInjuries(
       frame.units.some((unit) => unit.id === gladiator.id)
     );
     if (!foughtForTeam || (teamId !== 'red' && teamId !== 'blue')) continue;
-    const injury = Math.round(Math.min(1, Math.max(0, 1 - finalHp / maxHp)) * 100) / 100;
+    const injury =
+      Math.round(Math.min(1, Math.max(0, 1 - finalHp / maxHp)) * 100) / 100;
     current[gladiator.id] = Math.max(current[gladiator.id] ?? 0, injury);
   }
   all.set(team.id, current);
@@ -263,15 +323,37 @@ function buildStandings(
     .map((team) => {
       const round = eliminatedRound.get(team.id) ?? 0;
       const rank = round > totalRounds ? 1 : 2 ** (totalRounds - round) + 1;
-      return { rank, teamId: team.id, ownerId: team.ownerId, name: team.name, kind: team.kind };
+      return {
+        rank,
+        teamId: team.id,
+        ownerId: team.ownerId,
+        name: team.name,
+        kind: team.kind,
+      };
     })
     .sort((a, b) => a.rank - b.rank || a.teamId.localeCompare(b.teamId));
 }
 
-function settlementFor(standing: Standing, injuries: Record<string, number>): ArenaSettlement {
-  const gold = standing.rank === 1 ? 100 : standing.rank <= 2 ? 70 : standing.rank <= 4 ? 45 : 25;
+function settlementFor(
+  standing: Standing,
+  injuries: Record<string, number>
+): ArenaSettlement {
+  const gold =
+    standing.rank === 1
+      ? 100
+      : standing.rank <= 2
+        ? 70
+        : standing.rank <= 4
+          ? 45
+          : 25;
   const favor = standing.rank === 1 ? 2 : standing.rank <= 3 ? 1 : 0;
-  return { ownerId: standing.ownerId, rank: standing.rank, gold, favor, injuries };
+  return {
+    ownerId: standing.ownerId,
+    rank: standing.rank,
+    gold,
+    favor,
+    injuries,
+  };
 }
 
 function shuffleDeterministically<T>(items: T[], seed: number): void {

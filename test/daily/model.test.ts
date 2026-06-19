@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   GODS,
+  applySettlement,
   battleConfig,
   createBotSnapshot,
   createDailyArena,
@@ -13,7 +14,10 @@ import { createDefaultStable } from '../../src/shared/stable';
 
 describe('daily arena', () => {
   it('rotates one global god modifier per UTC day', () => {
-    const ids = [0, 1, 2, 3].map((offset) => godForDay(`2026-06-${String(19 + offset).padStart(2, '0')}`).id);
+    const ids = [0, 1, 2, 3].map(
+      (offset) =>
+        godForDay(`2026-06-${String(19 + offset).padStart(2, '0')}`).id
+    );
     expect(new Set(ids).size).toBe(GODS.length);
     expect(godForDay('2026-06-19')).toEqual(godForDay('2026-06-23'));
   });
@@ -37,8 +41,12 @@ describe('daily arena', () => {
     const god = GODS.find((candidate) => candidate.id === 'ares')!;
     const config = battleConfig(teamA, teamB, god, 42);
 
-    expect(config.units[0]!.attributes.force).toBeGreaterThan(teamA.roster[0]!.attributes.force);
-    expect(config.units[3]!.attributes.force).toBeGreaterThan(teamB.roster[0]!.attributes.force);
+    expect(config.units[0]!.attributes.force).toBeGreaterThan(
+      teamA.roster[0]!.attributes.force
+    );
+    expect(config.units[3]!.attributes.force).toBeGreaterThan(
+      teamB.roster[0]!.attributes.force
+    );
   });
 
   it('fills an empty cold-start bracket with bots and resolves deterministically', () => {
@@ -62,7 +70,32 @@ describe('daily arena', () => {
 
     expect(arena.standings).toHaveLength(8);
     expect(arena.settlements).toHaveLength(3);
-    expect(arena.settlements.every((settlement) => settlement.gold > 0)).toBe(true);
-    expect(arena.settlements.every((settlement) => Object.keys(settlement.injuries).length === 3)).toBe(true);
+    expect(arena.settlements.every((settlement) => settlement.gold > 0)).toBe(
+      true
+    );
+    expect(
+      arena.settlements.every(
+        (settlement) => Object.keys(settlement.injuries).length === 3
+      )
+    ).toBe(true);
+  });
+
+  it('distributes bracket rewards and injuries to the persistent stable', () => {
+    const stable = createDefaultStable('ianis', 'Kleos');
+    const gold = stable.gold;
+    const favor = stable.favor;
+    const injuredId = stable.roster[0]!.id;
+
+    applySettlement(stable, {
+      ownerId: stable.ownerId,
+      rank: 2,
+      gold: 70,
+      favor: 1,
+      injuries: { [injuredId]: 0.6 },
+    });
+
+    expect(stable.gold).toBe(gold + 70);
+    expect(stable.favor).toBe(favor + 1);
+    expect(stable.roster[0]!.injury).toBe(0.6);
   });
 });

@@ -6,6 +6,7 @@ import type {
   InitResponse,
 } from '../../shared/api';
 import { stable } from './stable';
+import { arena } from './arena';
 
 type ErrorResponse = {
   status: 'error';
@@ -15,6 +16,7 @@ type ErrorResponse = {
 export const api = new Hono();
 
 api.route('/stable', stable);
+api.route('/arena', arena);
 
 api.get('/init', async (c) => {
   const { postId } = context;

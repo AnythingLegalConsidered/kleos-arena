@@ -20,8 +20,8 @@
   "menu": {
     "items": [
       {
-        "label": "Create a new post",
-        "description": "kleos-arena",
+        "label": "Open today's arena",
+        "description": "Create or open the current KLEOS arena post",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
@@ -32,6 +32,13 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/example-form"
+      },
+      {
+        "label": "Force daily arena tick",
+        "description": "Resolve today's bracket immediately",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/arena-force-tick"
       }
     ]
   },
@@ -40,6 +47,14 @@
   },
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install"
+  },
+  "scheduler": {
+    "tasks": {
+      "daily-arena": {
+        "endpoint": "/internal/tasks/daily-arena",
+        "cron": "5 0 * * *"
+      }
+    }
   },
   "scripts": {
     "build": "vite build",
