@@ -11,7 +11,7 @@ Design : `CONCEPT.md`. Protocole d'exécution : `AGENTS.md`.
 | 2 | Rendu Phaser + juice | 1 | done |
 | 3 | Écurie & progression | 0 | done |
 | 4 | Loop quotidienne & arène | 2, 3 | done |
-| 5 | Pari=vote & ferveur | 4 | not-started |
+| 5 | Pari=vote & ferveur | 4 | in-progress |
 | 6 | Rétention (streak, leaderboard) | 3 | not-started |
 | 7 | Art & polish | 2 | not-started |
 | 8 | Submission | tout | not-started |

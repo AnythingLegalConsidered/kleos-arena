@@ -1,6 +1,6 @@
 # PHASE 5 — Pari=vote & ferveur
-Status: not-started
-Harness: —
+Status: in-progress
+Harness: Codex GPT-5
 
 ## Goal
 Parier = voter : la mise ajoute de la ferveur (bornée), l'outsider paie plus, les gains vont à l'écurie.
