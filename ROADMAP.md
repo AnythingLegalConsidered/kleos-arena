@@ -10,7 +10,7 @@ Design : `CONCEPT.md`. Protocole d'exécution : `AGENTS.md`.
 | 1 | Sim headless déterministe | 0 | done |
 | 2 | Rendu Phaser + juice | 1 | done |
 | 3 | Écurie & progression | 0 | done |
-| 4 | Loop quotidienne & arène | 2, 3 | in-progress |
+| 4 | Loop quotidienne & arène | 2, 3 | done |
 | 5 | Pari=vote & ferveur | 4 | not-started |
 | 6 | Rétention (streak, leaderboard) | 3 | not-started |
 | 7 | Art & polish | 2 | not-started |
