@@ -1,9 +1,14 @@
 import { Scene } from 'phaser';
 import * as Phaser from 'phaser';
 import { simulate } from '../../shared/sim';
-import type { AttackEvent, BattleConfig, BattleResult, UnitSpec, WeaponArchetype } from '../../shared/sim';
+import type {
+  AttackEvent,
+  BattleConfig,
+  BattleResult,
+  WeaponArchetype,
+} from '../../shared/sim';
 import { BattlePlayback, type SampledUnit } from '../arena/playback';
-import { botTeam, demoBattleConfig, DEMO_SEED } from '../arena/demoBattle';
+import { demoBattleConfig } from '../arena/demoBattle';
 
 // Team accent colors. Bodies stay white (CONCEPT: formes blanches, pas d'art
 // final) — the team only tints a thin outline so the two sides stay readable.
@@ -88,16 +93,22 @@ export class Arena extends Scene {
   private fervor = JUICE.fervorBaseStart;
   private ended = false;
 
-  // Battle source: a stable-driven fight (player team + bot), or the standalone demo.
-  private playerUnits: UnitSpec[] | null = null;
+  // Battle source: an authoritative daily qualifier, or the standalone demo.
+  private battleConfig: BattleConfig | null = null;
+  private battleLabel = '';
   private fromStable = false;
 
   constructor() {
     super('Arena');
   }
 
-  init(data: { playerUnits?: UnitSpec[]; fromStable?: boolean }): void {
-    this.playerUnits = data.playerUnits ?? null;
+  init(data: {
+    battleConfig?: BattleConfig;
+    battleLabel?: string;
+    fromStable?: boolean;
+  }): void {
+    this.battleConfig = data.battleConfig ?? null;
+    this.battleLabel = data.battleLabel ?? '';
     this.fromStable = data.fromStable ?? false;
   }
 
@@ -105,14 +116,15 @@ export class Arena extends Scene {
     this.resetState();
     this.cameras.main.setBackgroundColor(0x14110d);
 
-    const config: BattleConfig = this.playerUnits
-      ? { seed: DEMO_SEED, units: [...this.playerUnits, ...botTeam()] }
-      : demoBattleConfig();
+    const config = this.battleConfig ?? demoBattleConfig();
     this.result = simulate(config);
     this.playback = new BattlePlayback(this.result, config.units);
     this.bounds = computeBounds(this.result);
 
-    this.floor = this.add.rectangle(0, 0, 10, 10, 0x231d14).setStrokeStyle(2, 0x3a3022).setDepth(-1);
+    this.floor = this.add
+      .rectangle(0, 0, 10, 10, 0x231d14)
+      .setStrokeStyle(2, 0x3a3022)
+      .setDepth(-1);
 
     this.makeParticleTextures();
     this.sparks = this.add
@@ -144,12 +156,26 @@ export class Arena extends Scene {
       .setStrokeStyle(34, 0xff7a2f)
       .setAlpha(0)
       .setDepth(18);
-    this.fervorBg = this.add.rectangle(0, 0, 10, HP_HEIGHT * 2, 0x000000, 0.5).setDepth(20);
-    this.fervorFill = this.add.rectangle(0, 0, 10, HP_HEIGHT * 2, 0xff7a2f).setOrigin(0, 0.5).setDepth(20);
-    this.fervorLabel = this.add.text(0, 0, 'CROWD', hudStyle(13)).setOrigin(0.5).setAlpha(0.7).setDepth(20);
+    this.fervorBg = this.add
+      .rectangle(0, 0, 10, HP_HEIGHT * 2, 0x000000, 0.5)
+      .setDepth(20);
+    this.fervorFill = this.add
+      .rectangle(0, 0, 10, HP_HEIGHT * 2, 0xff7a2f)
+      .setOrigin(0, 0.5)
+      .setDepth(20);
+    this.fervorLabel = this.add
+      .text(0, 0, 'CROWD', hudStyle(13))
+      .setOrigin(0.5)
+      .setAlpha(0.7)
+      .setDepth(20);
 
     this.seedText = this.add
-      .text(0, 0, `seed 0x${config.seed.toString(16)}`, hudStyle(16))
+      .text(
+        0,
+        0,
+        `${this.battleLabel ? `${this.battleLabel}\n` : ''}seed 0x${config.seed.toString(16)}`,
+        hudStyle(16)
+      )
       .setOrigin(1, 0)
       .setAlpha(0.6)
       .setDepth(20);
@@ -159,7 +185,11 @@ export class Arena extends Scene {
       .setAlpha(0.6)
       .setDepth(20);
     this.banner = this.add
-      .text(0, 0, '', { ...hudStyle(64), stroke: '#000000', strokeThickness: 8 })
+      .text(0, 0, '', {
+        ...hudStyle(64),
+        stroke: '#000000',
+        strokeThickness: 8,
+      })
       .setOrigin(0.5)
       .setVisible(false)
       .setDepth(30);
@@ -240,7 +270,10 @@ export class Arena extends Scene {
 
   // --- juice ---------------------------------------------------------------
 
-  private handleEvent(event: AttackEvent, byId: Map<string, SampledUnit>): void {
+  private handleEvent(
+    event: AttackEvent,
+    byId: Map<string, SampledUnit>
+  ): void {
     const target = byId.get(event.targetId);
     if (!target) return;
     const sx = this.worldToScreenX(target.x);
@@ -255,7 +288,13 @@ export class Arena extends Scene {
     const view = this.views.find((v) => v.id === event.targetId);
     if (view) {
       view.body.setFillStyle(0xffd5a0);
-      this.tweens.add({ targets: view.body, scaleX: 1.35, scaleY: 1.35, duration: 55, yoyo: true });
+      this.tweens.add({
+        targets: view.body,
+        scaleX: 1.35,
+        scaleY: 1.35,
+        duration: 55,
+        yoyo: true,
+      });
       this.time.delayedCall(70, () => view.body.setFillStyle(0xffffff));
 
       const attacker = byId.get(event.attackerId);
@@ -263,15 +302,27 @@ export class Arena extends Scene {
         const dx = target.x - attacker.x;
         const dy = target.y - attacker.y;
         const len = Math.hypot(dx, dy) || 1;
-        const mag = Math.min(JUICE.knockbackMax, event.damage * JUICE.knockbackPerDamage);
+        const mag = Math.min(
+          JUICE.knockbackMax,
+          event.damage * JUICE.knockbackPerDamage
+        );
         view.kx += (dx / len) * mag;
         view.ky += (dy / len) * mag;
       }
     }
 
     this.sparks.explode(8, sx, sy);
-    this.popup(`${event.damage}`, sx, sy, event.killed ? '#ffd700' : '#ffffff', event.killed ? 36 : 26);
-    this.fervor = Math.min(1, this.fervor + (event.killed ? JUICE.fervorKill : JUICE.fervorHit));
+    this.popup(
+      `${event.damage}`,
+      sx,
+      sy,
+      event.killed ? '#ffd700' : '#ffffff',
+      event.killed ? 36 : 26
+    );
+    this.fervor = Math.min(
+      1,
+      this.fervor + (event.killed ? JUICE.fervorKill : JUICE.fervorHit)
+    );
 
     if (event.killed) {
       this.cameras.main.shake(220, JUICE.killShake);
@@ -279,7 +330,10 @@ export class Arena extends Scene {
       this.hitPauseMs = JUICE.killPauseMs;
       this.slowMoMs = JUICE.slowMoMs;
     } else {
-      const intensity = Math.min(JUICE.shakeMax, event.damage * JUICE.shakePerDamage);
+      const intensity = Math.min(
+        JUICE.shakeMax,
+        event.damage * JUICE.shakePerDamage
+      );
       this.cameras.main.shake(90, intensity);
       this.hitPauseMs = Math.max(this.hitPauseMs, JUICE.hitPauseMs);
     }
@@ -288,9 +342,15 @@ export class Arena extends Scene {
   private updateFervor(time: number): void {
     // Baseline swells as the battle progresses, so the roar grows toward the
     // climax even between blows; spikes from handleEvent ride on top and decay.
-    const progress = this.result.ticks > 0 ? Math.min(1, this.playback.tick / this.result.ticks) : 1;
+    const progress =
+      this.result.ticks > 0
+        ? Math.min(1, this.playback.tick / this.result.ticks)
+        : 1;
     const baseline = JUICE.fervorBaseStart + JUICE.fervorBaseSwell * progress;
-    this.fervor += ((baseline > this.fervor ? baseline : this.fervor * 0.985) - this.fervor) * JUICE.fervorEase;
+    this.fervor +=
+      ((baseline > this.fervor ? baseline : this.fervor * 0.985) -
+        this.fervor) *
+      JUICE.fervorEase;
     this.fervor = Math.max(0, Math.min(1, this.fervor));
 
     this.fervorFill.scaleX = this.fervor;
@@ -298,7 +358,13 @@ export class Arena extends Scene {
     this.vignette.setAlpha((0.04 + 0.26 * this.fervor) * pulse);
   }
 
-  private popup(text: string, x: number, y: number, color: string, size: number): void {
+  private popup(
+    text: string,
+    x: number,
+    y: number,
+    color: string,
+    size: number
+  ): void {
     const label = this.add
       .text(x, y - 16, text, {
         fontFamily: 'Arial Black',
@@ -324,11 +390,15 @@ export class Arena extends Scene {
   private createUnitView(sampled: SampledUnit): UnitView {
     const teamColor = TEAM_COLORS[sampled.teamId] ?? TEAM_COLORS.unknown!;
     const body = makeBody(this, sampled.weapon, teamColor);
-    const hpBg = this.add.rectangle(0, HP_OFFSET, HP_WIDTH, HP_HEIGHT, 0x000000, 0.55).setOrigin(0.5);
+    const hpBg = this.add
+      .rectangle(0, HP_OFFSET, HP_WIDTH, HP_HEIGHT, 0x000000, 0.55)
+      .setOrigin(0.5);
     const hpFill = this.add
       .rectangle(-HP_WIDTH / 2, HP_OFFSET, HP_WIDTH, HP_HEIGHT, teamColor)
       .setOrigin(0, 0.5);
-    const container = this.add.container(0, 0, [body, hpBg, hpFill]).setDepth(2);
+    const container = this.add
+      .container(0, 0, [body, hpBg, hpFill])
+      .setDepth(2);
     return {
       id: sampled.id,
       teamColor,
@@ -382,7 +452,9 @@ export class Arena extends Scene {
     const winner = this.result.winner;
     if (winner) {
       this.banner.setText(`${winner.toUpperCase()} WINS`);
-      this.banner.setColor(`#${(TEAM_COLORS[winner] ?? 0xffffff).toString(16).padStart(6, '0')}`);
+      this.banner.setColor(
+        `#${(TEAM_COLORS[winner] ?? 0xffffff).toString(16).padStart(6, '0')}`
+      );
     } else {
       this.banner.setText('DRAW');
       this.banner.setColor('#ffffff');
@@ -405,15 +477,23 @@ export class Arena extends Scene {
     this.scaleFactor = Math.min(usableW / worldW, usableH / worldH);
     const drawnW = worldW * this.scaleFactor;
     const drawnH = worldH * this.scaleFactor;
-    this.offsetX = INSET.side + (usableW - drawnW) / 2 - this.bounds.minX * this.scaleFactor;
-    this.offsetY = INSET.top + (usableH - drawnH) / 2 - this.bounds.minY * this.scaleFactor;
+    this.offsetX =
+      INSET.side + (usableW - drawnW) / 2 - this.bounds.minX * this.scaleFactor;
+    this.offsetY =
+      INSET.top + (usableH - drawnH) / 2 - this.bounds.minY * this.scaleFactor;
 
-    this.floor.setPosition(width / 2, INSET.top + usableH / 2).setSize(drawnW + 48, drawnH + 48);
+    this.floor
+      .setPosition(width / 2, INSET.top + usableH / 2)
+      .setSize(drawnW + 48, drawnH + 48);
     this.vignette.setPosition(width / 2, height / 2).setSize(width, height);
 
     const barW = Math.min(300, width * 0.5);
-    this.fervorBg.setPosition(width / 2, height - 22).setSize(barW, HP_HEIGHT * 2);
-    this.fervorFill.setPosition(width / 2 - barW / 2, height - 22).setSize(barW, HP_HEIGHT * 2);
+    this.fervorBg
+      .setPosition(width / 2, height - 22)
+      .setSize(barW, HP_HEIGHT * 2);
+    this.fervorFill
+      .setPosition(width / 2 - barW / 2, height - 22)
+      .setSize(barW, HP_HEIGHT * 2);
     this.fervorLabel.setPosition(width / 2, height - 40);
 
     this.seedText.setPosition(width - INSET.side, 16);
@@ -456,31 +536,62 @@ function computeBounds(result: BattleResult): WorldBounds {
     }
   }
   const pad = 8;
-  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+  return {
+    minX: minX - pad,
+    minY: minY - pad,
+    maxX: maxX + pad,
+    maxY: maxY + pad,
+  };
 }
 
 // White placeholder silhouette per weapon — distinct shapes so role reads at a
 // glance (CONCEPT: arme = identité visuelle). Team tints only the outline.
-function makeBody(scene: Scene, weapon: WeaponArchetype, teamColor: number): Phaser.GameObjects.Shape {
+function makeBody(
+  scene: Scene,
+  weapon: WeaponArchetype,
+  teamColor: number
+): Phaser.GameObjects.Shape {
   const shape = bodyShape(scene, weapon);
   shape.setStrokeStyle(3, teamColor);
   return shape;
 }
 
-function bodyShape(scene: Scene, weapon: WeaponArchetype): Phaser.GameObjects.Shape {
+function bodyShape(
+  scene: Scene,
+  weapon: WeaponArchetype
+): Phaser.GameObjects.Shape {
   const r = BODY_RADIUS;
   switch (weapon) {
     case 'spear':
-      return scene.add.triangle(0, 0, 0, -r * 1.3, -r * 0.85, r, r * 0.85, r, 0xffffff);
+      return scene.add.triangle(
+        0,
+        0,
+        0,
+        -r * 1.3,
+        -r * 0.85,
+        r,
+        r * 0.85,
+        r,
+        0xffffff
+      );
     case 'sword_shield':
       return scene.add.rectangle(0, 0, r * 1.8, r * 1.8, 0xffffff);
     case 'axe':
-      return scene.add.polygon(0, 0, [0, -r * 1.3, r * 1.1, 0, 0, r * 1.3, -r * 1.1, 0], 0xffffff);
+      return scene.add.polygon(
+        0,
+        0,
+        [0, -r * 1.3, r * 1.1, 0, 0, r * 1.3, -r * 1.1, 0],
+        0xffffff
+      );
     case 'bow':
       return scene.add.circle(0, 0, r, 0xffffff);
   }
 }
 
 function hudStyle(fontSize: number): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: 'Arial Black', fontSize: `${fontSize}px`, color: '#e8dcc0' };
+  return {
+    fontFamily: 'Arial Black',
+    fontSize: `${fontSize}px`,
+    color: '#e8dcc0',
+  };
 }

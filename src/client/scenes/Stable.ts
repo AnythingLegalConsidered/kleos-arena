@@ -1,9 +1,24 @@
 import { Scene } from 'phaser';
 import * as Phaser from 'phaser';
-import { attributeCost, gladiatorToUnitSpec, healCost, perkCost, PERK_MAX } from '../../shared/stable';
-import type { AttributeKey, Gladiator, Stable as StableData } from '../../shared/stable';
-import type { StableAction, StableActionResponse, StableResponse } from '../../shared/api';
-import { PLAYER_POSITIONS } from '../arena/demoBattle';
+import {
+  attributeCost,
+  healCost,
+  perkCost,
+  PERK_MAX,
+} from '../../shared/stable';
+import type {
+  AttributeKey,
+  Gladiator,
+  Stable as StableData,
+} from '../../shared/stable';
+import type {
+  ArenaEntryResponse,
+  ArenaErrorResponse,
+  ArenaStatusResponse,
+  StableAction,
+  StableActionResponse,
+  StableResponse,
+} from '../../shared/api';
 
 const ATTR_ROWS: { key: AttributeKey; label: string }[] = [
   { key: 'force', label: 'FOR' },
@@ -14,13 +29,14 @@ const ATTR_ROWS: { key: AttributeKey; label: string }[] = [
 const CARD_W = 236;
 const CARD_H = 286;
 const CARD_GAP = 18;
-const CARD_TOP = 96;
+const CARD_TOP = 112;
 
 // Player-facing stable management. The server is authoritative for every spend:
 // the client posts an action and re-renders from the returned stable, so the UI
 // can never drift from the persisted truth.
 export class Stable extends Scene {
   private stable: StableData | null = null;
+  private arenaStatus: ArenaStatusResponse | null = null;
   private root!: Phaser.GameObjects.Container;
   private busy = false;
   private status = '';
@@ -37,15 +53,21 @@ export class Stable extends Scene {
     this.scale.on('resize', this.onResize);
     this.events.once('shutdown', () => this.scale.off('resize', this.onResize));
     this.renderMessage('Chargement de l’écurie…');
-    void this.loadStable();
+    void this.loadData();
   }
 
-  private async loadStable(): Promise<void> {
+  private async loadData(): Promise<void> {
     try {
-      const res = await fetch('/api/stable');
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const data: StableResponse = await res.json();
-      this.stable = data.stable;
+      const [stableRes, arenaRes] = await Promise.all([
+        fetch('/api/stable'),
+        fetch('/api/arena'),
+      ]);
+      if (!stableRes.ok || !arenaRes.ok)
+        throw new Error('daily data unavailable');
+      const stableData: StableResponse = await stableRes.json();
+      const arenaData: ArenaStatusResponse = await arenaRes.json();
+      this.stable = stableData.stable;
+      this.arenaStatus = arenaData;
       this.status = '';
       this.render();
     } catch {
@@ -77,12 +99,26 @@ export class Stable extends Scene {
     }
   }
 
-  private startFight(): void {
-    if (!this.stable) return;
-    const playerUnits = this.stable.roster.map((g, i) =>
-      gladiatorToUnitSpec(g, 'red', PLAYER_POSITIONS[i] ?? { x: -100, y: 0 })
-    );
-    this.scene.start('Arena', { playerUnits, fromStable: true });
+  private async startFight(): Promise<void> {
+    if (!this.stable || !this.arenaStatus || this.busy) return;
+    this.busy = true;
+    this.status = 'Soumission de la qualif…';
+    this.render();
+    try {
+      const res = await fetch('/api/arena/enter', { method: 'POST' });
+      const data: ArenaEntryResponse | ArenaErrorResponse = await res.json();
+      if (data.type === 'error') throw new Error(data.error);
+      this.scene.start('Arena', {
+        battleConfig: data.qualifier.config,
+        battleLabel: `${data.god.name} · ${data.god.description}`,
+        fromStable: true,
+      });
+    } catch (error) {
+      this.busy = false;
+      this.status =
+        error instanceof Error ? frenchError(error.message) : 'Erreur réseau';
+      this.render();
+    }
   }
 
   // --- rendering ----------------------------------------------------------
@@ -93,7 +129,24 @@ export class Stable extends Scene {
     const { width, height } = this.scale;
 
     this.text(width / 2, 30, 'KLEOS · ÉCURIE', 26, '#e8dcc0', 0.5);
-    this.text(width / 2, 60, `or ${this.stable.gold}    faveur ${this.stable.favor}`, 18, '#ffd700', 0.5);
+    this.text(
+      width / 2,
+      60,
+      `or ${this.stable.gold}    faveur ${this.stable.favor}`,
+      18,
+      '#ffd700',
+      0.5
+    );
+    if (this.arenaStatus) {
+      this.text(
+        width / 2,
+        86,
+        `${this.arenaStatus.god.name} · ${this.arenaStatus.god.description} · ${this.arenaStatus.participantCount} engagés`,
+        14,
+        '#b7a98a',
+        0.5
+      );
+    }
 
     const roster = this.stable.roster;
     const totalW = roster.length * CARD_W + (roster.length - 1) * CARD_GAP;
@@ -103,8 +156,29 @@ export class Stable extends Scene {
       x += CARD_W + CARD_GAP;
     }
 
-    this.button(width / 2 - 95, height - 72, 190, 46, 'COMBATTRE', 0x1d6b2f, () => this.startFight());
-    if (this.status) this.text(width / 2, height - 16, this.status, 14, '#ff8a8a', 0.5);
+    const arenaOpen = this.arenaStatus?.status === 'open';
+    const fought = this.arenaStatus?.qualifier != null;
+    const fightLabel = arenaOpen
+      ? fought
+        ? 'REJOUER QUALIF'
+        : 'JOUER QUALIF'
+      : 'ARÈNE RÉSOLUE';
+    this.button(
+      width / 2 - 95,
+      height - 72,
+      190,
+      46,
+      fightLabel,
+      0x1d6b2f,
+      () => void this.startFight(),
+      arenaOpen && !this.busy
+    );
+
+    const dailyLine = this.dailySummary();
+    if (dailyLine)
+      this.text(width / 2, height - 92, dailyLine, 13, '#b7a98a', 0.5, 0.5);
+    if (this.status)
+      this.text(width / 2, height - 16, this.status, 14, '#ff8a8a', 0.5);
   }
 
   private renderCard(g: Gladiator, x: number, y: number): void {
@@ -116,17 +190,42 @@ export class Stable extends Scene {
 
     const gold = this.stable?.gold ?? 0;
     this.text(x + CARD_W / 2, y + 18, g.name, 20, '#e8dcc0', 0.5);
-    this.text(x + CARD_W / 2, y + 40, `${weaponLabel(g.weapon)} · don ${attrShort(g.aptitude)}`, 13, '#b7a98a', 0.5);
+    this.text(
+      x + CARD_W / 2,
+      y + 40,
+      `${weaponLabel(g.weapon)} · don ${attrShort(g.aptitude)}`,
+      13,
+      '#b7a98a',
+      0.5
+    );
 
     let ry = y + 74;
     for (const row of ATTR_ROWS) {
       this.text(x + 18, ry, row.label, 16, '#e8dcc0', 0, 0.5);
-      this.text(x + 64, ry, `${g.attributes[row.key]}`, 18, '#ffffff', 0.5, 0.5);
+      this.text(
+        x + 64,
+        ry,
+        `${g.attributes[row.key]}`,
+        18,
+        '#ffffff',
+        0.5,
+        0.5
+      );
       this.text(x + 92, ry, pips(g.perks[row.key]), 14, '#ff7a2f', 0, 0.5);
       const cost = attributeCost(g, row.key);
       this.button(
-        x + CARD_W - 60, ry - 15, 48, 30, `+${cost}`, 0x35506b,
-        () => void this.sendAction({ action: 'attr', gladiatorId: g.id, attr: row.key }),
+        x + CARD_W - 60,
+        ry - 15,
+        48,
+        30,
+        `+${cost}`,
+        0x35506b,
+        () =>
+          void this.sendAction({
+            action: 'attr',
+            gladiatorId: g.id,
+            attr: row.key,
+          }),
         gold >= cost
       );
       ry += 38;
@@ -134,17 +233,33 @@ export class Stable extends Scene {
 
     const perkAttr = g.aptitude;
     const pCost = perkCost(g, perkAttr);
-    const perkLabel = pCost === null ? 'perk au max' : `perk ${attrShort(perkAttr)}  +${pCost}`;
+    const perkLabel =
+      pCost === null ? 'perk au max' : `perk ${attrShort(perkAttr)}  +${pCost}`;
     this.button(
-      x + 18, y + CARD_H - 76, CARD_W - 36, 30, perkLabel, 0x6b4d1d,
-      () => void this.sendAction({ action: 'perk', gladiatorId: g.id, attr: perkAttr }),
+      x + 18,
+      y + CARD_H - 76,
+      CARD_W - 36,
+      30,
+      perkLabel,
+      0x6b4d1d,
+      () =>
+        void this.sendAction({
+          action: 'perk',
+          gladiatorId: g.id,
+          attr: perkAttr,
+        }),
       pCost !== null && gold >= pCost
     );
 
     const injured = g.injury > 0;
     const healLabel = injured ? `soin  -${healCost(g)}` : 'sain';
     this.button(
-      x + 18, y + CARD_H - 40, CARD_W - 36, 30, healLabel, 0x6b2f2f,
+      x + 18,
+      y + CARD_H - 40,
+      CARD_W - 36,
+      30,
+      healLabel,
+      0x6b2f2f,
       () => void this.sendAction({ action: 'heal', gladiatorId: g.id }),
       injured && gold >= healCost(g)
     );
@@ -154,7 +269,24 @@ export class Stable extends Scene {
     this.root.removeAll(true);
     const { width, height } = this.scale;
     this.text(width / 2, height / 2, message, 18, '#e8dcc0', 0.5, 0.5);
-    if (retry) this.input.once('pointerdown', () => void this.loadStable());
+    if (retry) this.input.once('pointerdown', () => void this.loadData());
+  }
+
+  private dailySummary(): string {
+    if (!this.arenaStatus) return '';
+    const parts: string[] = [];
+    if (this.arenaStatus.qualifier) {
+      parts.push(
+        `qualif ${this.arenaStatus.qualifier.won ? 'gagnée' : 'perdue'} vs ${this.arenaStatus.qualifier.opponentName}`
+      );
+    }
+    if (this.arenaStatus.result) {
+      const result = this.arenaStatus.result;
+      parts.push(
+        `#${result.rank}  +${result.gold} or  +${result.favor} faveur`
+      );
+    }
+    return parts.join('   ·   ');
   }
 
   // --- small UI helpers ---------------------------------------------------
@@ -169,7 +301,11 @@ export class Stable extends Scene {
     originY = 0
   ): void {
     const t = this.add
-      .text(x, y, str, { fontFamily: 'Arial Black', fontSize: `${size}px`, color })
+      .text(x, y, str, {
+        fontFamily: 'Arial Black',
+        fontSize: `${size}px`,
+        color,
+      })
       .setOrigin(originX, originY);
     this.root.add(t);
   }
