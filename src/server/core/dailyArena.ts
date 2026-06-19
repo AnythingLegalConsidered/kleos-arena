@@ -36,6 +36,7 @@ import {
   applyArenaSettlement,
   loadOrCreateStable,
   saveStable,
+  stableKey,
 } from './stableStore';
 
 const GHOSTS_KEY = 'arena:ghosts';
@@ -122,14 +123,19 @@ export async function placeCurrentBet(
     if (odds === null) throw new Error('unknown featured team');
 
     const field = betField(username, matchId);
+    await loadOrCreateStable(username);
+    const transaction = await redis.watch(betsKey(day), stableKey(username));
     const existing = parseArenaBet(await redis.hGet(betsKey(day), field));
+    const stable = await loadOrCreateStable(username);
     if (existing) {
-      const stable = await loadOrCreateStable(username);
+      await transaction.unwatch();
       return { bet: existing, gold: stable.gold };
     }
 
-    const stable = await loadOrCreateStable(username);
-    if (stable.gold < stake) throw new Error('not enough gold');
+    if (stable.gold < stake) {
+      await transaction.unwatch();
+      throw new Error('not enough gold');
+    }
     const bet: ArenaBet = {
       id: `${day}:${field}`,
       ownerId: username,
@@ -139,14 +145,12 @@ export async function placeCurrentBet(
       odds,
     };
 
-    await redis.hSet(betsKey(day), { [field]: JSON.stringify(bet) });
-    try {
-      stable.gold -= stake;
-      await saveStable(stable);
-    } catch (error) {
-      await redis.hDel(betsKey(day), [field]);
-      throw error;
-    }
+    stable.gold -= stake;
+    await transaction.multi();
+    await transaction.hSet(betsKey(day), { [field]: JSON.stringify(bet) });
+    await transaction.set(stableKey(username), JSON.stringify(stable));
+    const results = await transaction.exec();
+    if (results.length !== 2) throw new Error('betting is busy');
     return { bet, gold: stable.gold };
   });
 }
