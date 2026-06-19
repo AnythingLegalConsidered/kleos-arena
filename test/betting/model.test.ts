@@ -125,4 +125,50 @@ describe('betting and fervor', () => {
     expect(payout!.gold).toBe(Math.floor(bet.stake * bet.odds));
     expect(stable.gold).toBe(initialGold + payout!.gold);
   });
+
+  it('skips an unresolvable ticket instead of aborting the whole settlement', () => {
+    const teamA = createBotSnapshot('2026-06-19', 0);
+    const teamB = createBotSnapshot('2026-06-19', 1);
+    const market = {
+      id: 'featured-0',
+      teamA,
+      teamB,
+      oddsA: 2.4,
+      oddsB: 1.6,
+    };
+    const orphanBet = {
+      id: 'orphan',
+      ownerId: 'bettor-2',
+      matchId: 'featured-missing',
+      teamId: teamA.id,
+      stake: 25,
+      odds: 2,
+    };
+    const validBet = {
+      id: 'valid',
+      ownerId: 'bettor',
+      matchId: market.id,
+      teamId: teamA.id,
+      stake: 25,
+      odds: market.oddsA,
+    };
+
+    const payouts = settleBets([orphanBet, validBet], {
+      featuredMatches: [market],
+      bracketMatches: [
+        {
+          round: 1,
+          index: 0,
+          seed: 42,
+          teamAId: teamA.id,
+          teamBId: teamB.id,
+          winnerId: teamA.id,
+          ticks: 120,
+        },
+      ],
+    });
+
+    expect(payouts).toHaveLength(1);
+    expect(payouts[0]!.betId).toBe('valid');
+  });
 });

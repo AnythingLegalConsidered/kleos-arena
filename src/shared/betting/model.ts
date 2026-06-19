@@ -73,11 +73,19 @@ export function settleBets(
   bets: readonly ArenaBet[],
   context: SettledBetContext
 ): BetPayout[] {
-  return bets.map((bet) => {
+  const payouts: BetPayout[] = [];
+  for (const bet of bets) {
     const featured = context.featuredMatches.find(
       (match) => match.id === bet.matchId
     );
-    if (!featured) throw new Error('unknown featured match');
+    if (!featured) {
+      // Skip rather than throw: one unresolvable ticket must not abort the
+      // whole day's settlement (DEBT-002).
+      console.warn(
+        `settleBets: skipping bet ${bet.id}, unknown featured match ${bet.matchId}`
+      );
+      continue;
+    }
 
     const bracket = context.bracketMatches.find(
       (match) =>
@@ -89,15 +97,21 @@ export function settleBets(
           featured.teamB.id
         )
     );
-    if (!bracket) throw new Error('featured match missing from bracket');
+    if (!bracket) {
+      console.warn(
+        `settleBets: skipping bet ${bet.id}, featured match ${bet.matchId} missing from bracket`
+      );
+      continue;
+    }
 
-    return {
+    payouts.push({
       betId: bet.id,
       ownerId: bet.ownerId,
       gold:
         bracket.winnerId === bet.teamId ? Math.floor(bet.stake * bet.odds) : 0,
-    };
-  });
+    });
+  }
+  return payouts;
 }
 
 export function applyBetPayout(stable: Stable, payout: BetPayout): void {
