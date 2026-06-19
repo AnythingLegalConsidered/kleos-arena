@@ -164,7 +164,7 @@ export class Stable extends Scene {
         : 'JOUER QUALIF'
       : 'ARÈNE RÉSOLUE';
     this.button(
-      width / 2 - 95,
+      width / 2 - 200,
       height - 72,
       190,
       46,
@@ -172,6 +172,16 @@ export class Stable extends Scene {
       0x1d6b2f,
       () => void this.startFight(),
       arenaOpen && !this.busy
+    );
+    this.button(
+      width / 2 + 10,
+      height - 72,
+      190,
+      46,
+      'PARIER · VOTER',
+      0x9d3d1c,
+      () => this.scene.start('Betting'),
+      this.arenaStatus !== null && !this.busy
     );
 
     const dailyLine = this.dailySummary();
@@ -285,6 +295,9 @@ export class Stable extends Scene {
       parts.push(
         `#${result.rank}  +${result.gold} or  +${result.favor} faveur`
       );
+    }
+    if (this.arenaStatus.latestBetPayout !== null) {
+      parts.push(`paris +${this.arenaStatus.latestBetPayout} or`);
     }
     return parts.join('   ·   ');
   }

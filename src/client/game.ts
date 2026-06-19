@@ -7,6 +7,7 @@ import * as Phaser from 'phaser';
 import { AUTO, Game } from 'phaser';
 import { Preloader } from './scenes/Preloader';
 import { Stable } from './scenes/Stable';
+import { Betting } from './scenes/Betting';
 
 //  Find out more information about the Game Config at:
 //  https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
@@ -22,7 +23,16 @@ const config: Phaser.Types.Core.GameConfig = {
     width: 1024,
     height: 768,
   },
-  scene: [Boot, Preloader, MainMenu, Stable, Arena, MainGame, GameOver],
+  scene: [
+    Boot,
+    Preloader,
+    MainMenu,
+    Stable,
+    Betting,
+    Arena,
+    MainGame,
+    GameOver,
+  ],
 };
 
 const StartGame = (parent: string) => {
