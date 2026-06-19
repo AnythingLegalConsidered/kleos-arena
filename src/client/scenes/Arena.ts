@@ -13,13 +13,14 @@ const TEAM_COLORS: Record<string, number> = {
   unknown: 0xffffff,
 };
 
-const BODY_RADIUS = 13; // unit silhouette half-size, in screen px
-const HP_WIDTH = 30;
-const HP_HEIGHT = 5;
-const HP_OFFSET = -BODY_RADIUS - 9;
+const BODY_RADIUS = 20; // unit silhouette half-size, in screen px
+const HP_WIDTH = 44;
+const HP_HEIGHT = 6;
+const HP_OFFSET = -BODY_RADIUS - 11;
 
-// Margins (px) reserved around the fitted arena for the HUD strips.
-const INSET = { top: 56, bottom: 56, side: 28 };
+// Margins (px) reserved around the fitted arena for the HUD strips. Kept tight so
+// the fight claims as much of the view as possible.
+const INSET = { top: 34, bottom: 44, side: 14 };
 
 // --- juice tuning (handoff: tweak the feel here) --------------------------
 const JUICE = {
@@ -213,7 +214,7 @@ export class Arena extends Scene {
     const sy = this.worldToScreenY(target.y);
 
     if (event.dodged) {
-      this.popup('MISS', sx, sy, '#cfd8ff', 18);
+      this.popup('MISS', sx, sy, '#cfd8ff', 22);
       this.fervor = Math.min(1, this.fervor + JUICE.fervorHit * 0.5);
       return;
     }
@@ -236,7 +237,7 @@ export class Arena extends Scene {
     }
 
     this.sparks.explode(8, sx, sy);
-    this.popup(`${event.damage}`, sx, sy, event.killed ? '#ffd700' : '#ffffff', event.killed ? 28 : 22);
+    this.popup(`${event.damage}`, sx, sy, event.killed ? '#ffd700' : '#ffffff', event.killed ? 36 : 26);
     this.fervor = Math.min(1, this.fervor + (event.killed ? JUICE.fervorKill : JUICE.fervorHit));
 
     if (event.killed) {
@@ -420,7 +421,7 @@ function computeBounds(result: BattleResult): WorldBounds {
       if (u.y > maxY) maxY = u.y;
     }
   }
-  const pad = 20;
+  const pad = 8;
   return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
 }
 

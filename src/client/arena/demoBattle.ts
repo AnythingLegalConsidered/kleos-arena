@@ -9,15 +9,17 @@ export const DEMO_SEED = 0x6b1e05;
 // A 3v3 with deliberately contrasting builds so the placeholder shapes read as
 // distinct silhouettes (CONCEPT: arme = identité visuelle et mécanique).
 export function demoBattleConfig(): BattleConfig {
+  // Lines are kept close in X and spread in Y so the fought-over space stays
+  // near the canvas aspect ratio — the renderer fits it big with little waste.
   const units: UnitSpec[] = [
     // Red stable advances from the left.
-    unit('red-spear', 'red', -130, -40, 'spear', { force: 6, agility: 5, resilience: 4 }),
-    unit('red-guard', 'red', -130, 0, 'sword_shield', { force: 4, agility: 3, resilience: 9 }),
-    unit('red-bow', 'red', -165, 40, 'bow', { force: 5, agility: 9, resilience: 2 }),
+    unit('red-spear', 'red', -100, -78, 'spear', { force: 6, agility: 5, resilience: 4 }),
+    unit('red-guard', 'red', -100, 0, 'sword_shield', { force: 4, agility: 3, resilience: 9 }),
+    unit('red-bow', 'red', -125, 78, 'bow', { force: 5, agility: 9, resilience: 2 }),
     // Blue stable advances from the right.
-    unit('blue-axe', 'blue', 130, -40, 'axe', { force: 10, agility: 4, resilience: 3 }),
-    unit('blue-guard', 'blue', 130, 0, 'sword_shield', { force: 4, agility: 3, resilience: 9 }),
-    unit('blue-bow', 'blue', 165, 40, 'bow', { force: 5, agility: 9, resilience: 2 }),
+    unit('blue-axe', 'blue', 100, -78, 'axe', { force: 10, agility: 4, resilience: 3 }),
+    unit('blue-guard', 'blue', 100, 0, 'sword_shield', { force: 4, agility: 3, resilience: 9 }),
+    unit('blue-bow', 'blue', 125, 78, 'bow', { force: 5, agility: 9, resilience: 2 }),
   ];
   return { seed: DEMO_SEED, units };
 }
