@@ -2,6 +2,8 @@ import { simulate } from '../sim';
 import type { BattleConfig, BattleResult, UnitSpec, Vec2 } from '../sim';
 import { createDefaultStable, gladiatorToUnitSpec } from '../stable';
 import type { Gladiator, Stable } from '../stable';
+import { applyFervorToConfig, oddsForConfig } from '../betting';
+import type { FeaturedMatch, FervorByTeam } from '../betting';
 import {
   DAILY_ARENA_VERSION,
   type ArenaEntry,
@@ -59,6 +61,12 @@ const BLUE_POSITIONS: readonly Vec2[] = [
 ];
 
 const MIN_BRACKET_SIZE = 8;
+const FEATURED_MATCH_COUNT = 3;
+
+export type ResolveArenaOptions = {
+  featuredMatches?: readonly FeaturedMatch[];
+  fervor?: FervorByTeam;
+};
 
 export function utcDay(date = new Date()): string {
   return date.toISOString().slice(0, 10);
@@ -110,6 +118,34 @@ export function createBotSnapshot(day: string, index: number): TeamSnapshot {
   };
 }
 
+export function createFeaturedMatches(
+  day: string,
+  candidates: readonly TeamSnapshot[],
+  god: GodDefinition
+): FeaturedMatch[] {
+  const teams = uniqueTeams(candidates);
+  for (let index = 0; teams.length < FEATURED_MATCH_COUNT * 2; index++) {
+    const bot = createBotSnapshot(day, index);
+    if (!teams.some((team) => team.id === bot.id)) teams.push(bot);
+  }
+  shuffleDeterministically(teams, hashSeed(`${day}:featured`));
+
+  const featured: FeaturedMatch[] = [];
+  for (let index = 0; index < FEATURED_MATCH_COUNT; index++) {
+    const teamA = teams[index * 2]!;
+    const teamB = teams[index * 2 + 1]!;
+    const seed = hashSeed(`${day}:featured:${index}:${teamA.id}:${teamB.id}`);
+    const odds = oddsForConfig(battleConfig(teamA, teamB, god, seed));
+    featured.push({
+      id: `${day}:featured:${index}`,
+      teamA,
+      teamB,
+      ...odds,
+    });
+  }
+  return featured;
+}
+
 export function enterArena(
   arena: DailyArena,
   team: TeamSnapshot,
@@ -134,14 +170,17 @@ export function enterArena(
   return entry;
 }
 
-export function resolveArena(arena: DailyArena): DailyArena {
+export function resolveArena(
+  arena: DailyArena,
+  options: ResolveArenaOptions = {}
+): DailyArena {
   if (arena.status === 'resolved') return arena;
 
-  const teams = arena.entries.map((entry) => entry.team);
-  const bracketSize = nextPowerOfTwo(Math.max(MIN_BRACKET_SIZE, teams.length));
-  for (let i = teams.length; i < bracketSize; i++)
-    teams.push(createBotSnapshot(arena.day, i));
-  shuffleDeterministically(teams, hashSeed(`${arena.day}:bracket`));
+  const entrantOwners = new Set(
+    arena.entries.map((entry) => entry.team.ownerId)
+  );
+  const teams = bracketTeams(arena, options.featuredMatches ?? []);
+  const bracketSize = teams.length;
 
   const totalRounds = Math.log2(bracketSize);
   const eliminatedRound = new Map<string, number>();
@@ -157,7 +196,12 @@ export function resolveArena(arena: DailyArena): DailyArena {
       const seed = hashSeed(
         `${arena.day}:round:${round}:match:${index / 2}:${teamA.id}:${teamB.id}`
       );
-      const config = battleConfig(teamA, teamB, godById(arena.godId), seed);
+      const baseConfig = battleConfig(teamA, teamB, godById(arena.godId), seed);
+      const config = applyFervorToConfig(
+        baseConfig,
+        options.fervor?.[teamA.id] ?? 0,
+        options.fervor?.[teamB.id] ?? 0
+      );
       const result = simulate(config);
       const winner = pickWinner(teamA, teamB, result, seed);
       const loser = winner.id === teamA.id ? teamB : teamA;
@@ -184,12 +228,55 @@ export function resolveArena(arena: DailyArena): DailyArena {
   arena.matches = matches;
   arena.standings = standings;
   arena.settlements = standings
-    .filter((standing) => standing.kind === 'player')
+    .filter(
+      (standing) =>
+        standing.kind === 'player' && entrantOwners.has(standing.ownerId)
+    )
     .map((standing) =>
       settlementFor(standing, injuries.get(standing.teamId) ?? {})
     );
   arena.status = 'resolved';
   return arena;
+}
+
+function bracketTeams(
+  arena: DailyArena,
+  featuredMatches: readonly FeaturedMatch[]
+): TeamSnapshot[] {
+  if (featuredMatches.length === 0) {
+    const teams = arena.entries.map((entry) => entry.team);
+    const bracketSize = nextPowerOfTwo(
+      Math.max(MIN_BRACKET_SIZE, teams.length)
+    );
+    for (let index = teams.length; index < bracketSize; index++)
+      teams.push(createBotSnapshot(arena.day, index));
+    shuffleDeterministically(teams, hashSeed(`${arena.day}:bracket`));
+    return teams;
+  }
+
+  const locked = uniqueTeams(
+    featuredMatches.flatMap((match) => [match.teamA, match.teamB])
+  );
+  const lockedIds = new Set(locked.map((team) => team.id));
+  const remaining = uniqueTeams(
+    arena.entries
+      .map((entry) => entry.team)
+      .filter((team) => !lockedIds.has(team.id))
+  );
+  const bracketSize = nextPowerOfTwo(
+    Math.max(MIN_BRACKET_SIZE, locked.length + remaining.length)
+  );
+  for (let index = 0; locked.length + remaining.length < bracketSize; index++) {
+    const bot = createBotSnapshot(arena.day, index);
+    if (
+      !lockedIds.has(bot.id) &&
+      !remaining.some((team) => team.id === bot.id)
+    ) {
+      remaining.push(bot);
+    }
+  }
+  shuffleDeterministically(remaining, hashSeed(`${arena.day}:bracket`));
+  return [...locked, ...remaining];
 }
 
 export function battleConfig(
@@ -378,6 +465,17 @@ function cloneRoster(roster: readonly Gladiator[]): Gladiator[] {
     attributes: { ...gladiator.attributes },
     perks: { ...gladiator.perks },
   }));
+}
+
+function uniqueTeams(teams: readonly TeamSnapshot[]): TeamSnapshot[] {
+  const seen = new Set<string>();
+  return teams
+    .filter((team) => {
+      if (seen.has(team.id)) return false;
+      seen.add(team.id);
+      return true;
+    })
+    .map((team) => ({ ...team, roster: cloneRoster(team.roster) }));
 }
 
 function hashSeed(value: string): number {

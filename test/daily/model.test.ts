@@ -5,6 +5,7 @@ import {
   battleConfig,
   createBotSnapshot,
   createDailyArena,
+  createFeaturedMatches,
   enterArena,
   godForDay,
   resolveArena,
@@ -58,6 +59,25 @@ describe('daily arena', () => {
     expect(first.matches).toHaveLength(7);
     expect(first.standings[0]?.rank).toBe(1);
     expect(first).toEqual(second);
+  });
+
+  it('locks every featured fight into the first bracket round', () => {
+    const arena = createDailyArena('2026-06-19');
+    const god = GODS.find((candidate) => candidate.id === arena.godId)!;
+    const featured = createFeaturedMatches(arena.day, [], god);
+
+    resolveArena(arena, { featuredMatches: featured });
+
+    for (const market of featured) {
+      expect(
+        arena.matches.some(
+          (match) =>
+            match.round === 1 &&
+            [match.teamAId, match.teamBId].includes(market.teamA.id) &&
+            [match.teamAId, match.teamBId].includes(market.teamB.id)
+        )
+      ).toBe(true);
+    }
   });
 
   it('ranks every player and creates one settlement per real entrant', () => {
