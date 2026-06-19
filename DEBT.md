@@ -10,9 +10,9 @@ Sévérités : `high` · `medium` · `low`.
 
 | ID | Sév | Titre | Origine | Statut |
 |----|-----|-------|---------|--------|
-| DEBT-001 | medium | Crédit des gains de pari non atomique | Phase 5 (hérité Phase 4) | open |
-| DEBT-002 | medium | `settleBets` throw global bloque tous les payouts du jour | Phase 5 | open |
-| DEBT-003 | low | `placeCurrentBet` plante si `exec()` rend `null` | Phase 5 | open |
+| DEBT-001 | medium | Crédit des gains de pari non atomique | Phase 5 (hérité Phase 4) | closed |
+| DEBT-002 | medium | `settleBets` throw global bloque tous les payouts du jour | Phase 5 | closed |
+| DEBT-003 | low | `placeCurrentBet` plante si `exec()` rend `null` | Phase 5 | closed |
 | DEBT-004 | medium | Couche serveur non testée (atomicité / idempotence / concurrence) | Phases 4-5 | deferred |
 | DEBT-005 | medium | 37 vulns `npm audit` (dont 6 high) héritées du scaffold | Phase 0 | watching |
 | DEBT-006 | low | Parallélisation des phases via git worktrees inexploitée | Process | deferred |
@@ -26,6 +26,10 @@ Sévérités : `high` · `medium` · `low`.
 aussi possible si un achat écurie tombe pendant le tick.
 **Où** : `applyBetSettlement` ([src/server/core/dailyArena.ts](src/server/core/dailyArena.ts#L337-L356)). Pattern hérité de `applyArenaSettlement` ([src/server/core/stableStore.ts](src/server/core/stableStore.ts#L26-L43)).
 **Action** : claim + crédit dans le **même** `MULTI` (à l'image du débit `placeCurrentBet`, déjà robuste via `WATCH`/`MULTI`/`EXEC`). Corriger aussi `applyArenaSettlement` (même faille).
+**Résolu** : `applyBetSettlement` et `applyArenaSettlement` réécrits en `WATCH`/`MULTI`/`EXEC`
+(claim + écriture du solde dans le même `EXEC`, retry borné sur abort, plus de claim orphelin
+sans crédit). Payout perdant (`gold === 0`) garde un simple `hSetNX` (aucun solde à corrompre).
+Vérifié par `type-check`/`lint`/`build` ; couverture unitaire serveur reste sous `DEBT-004`.
 
 ## DEBT-002 — `settleBets` throw global bloque tous les payouts
 **Problème** : si un featured n'est pas retrouvé dans le bracket, le throw avorte **tout**
@@ -34,6 +38,9 @@ Aujourd'hui inactif (les featured sont garantis en tête de bracket), mais une a
 casse tout au lieu de skipper le ticket fautif.
 **Où** : `settleBets` ([src/shared/betting/model.ts](src/shared/betting/model.ts#L72-L101)).
 **Action** : skip + log le ticket non résolvable au lieu de throw.
+**Résolu** : `settleBets` itère et `continue` (avec `console.warn`) sur un ticket dont le featured
+ou le bracket est introuvable, au lieu de throw — les paris valides du jour sont réglés.
+Test : `test/betting/model.test.ts` « skips an unresolvable ticket… ».
 
 ## DEBT-003 — `placeCurrentBet` plante si la transaction WATCH est avortée
 **Problème** : `results.length !== 2` lève une `TypeError` si `exec()` rend `null`
@@ -41,6 +48,8 @@ casse tout au lieu de skipper le ticket fautif.
 pas de débit erroné cependant.
 **Où** : `placeCurrentBet` ([src/server/core/dailyArena.ts](src/server/core/dailyArena.ts#L152-L153)).
 **Action** : traiter `results == null` comme « betting is busy ».
+**Résolu** : garde `if (!results || results.length !== 2)` — un `EXEC` avorté lève désormais
+« betting is busy » au lieu d'une `TypeError`.
 
 ## DEBT-004 — Couche serveur non testée
 **Problème** : 0 test sur atomicité / idempotence / no-double-débit alors que c'est là que
