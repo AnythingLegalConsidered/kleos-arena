@@ -1,9 +1,9 @@
 import { Scene } from 'phaser';
 import * as Phaser from 'phaser';
 import { simulate } from '../../shared/sim';
-import type { AttackEvent, BattleResult, WeaponArchetype } from '../../shared/sim';
+import type { AttackEvent, BattleConfig, BattleResult, UnitSpec, WeaponArchetype } from '../../shared/sim';
 import { BattlePlayback, type SampledUnit } from '../arena/playback';
-import { demoBattleConfig } from '../arena/demoBattle';
+import { botTeam, demoBattleConfig, DEMO_SEED } from '../arena/demoBattle';
 
 // Team accent colors. Bodies stay white (CONCEPT: formes blanches, pas d'art
 // final) — the team only tints a thin outline so the two sides stay readable.
@@ -88,14 +88,26 @@ export class Arena extends Scene {
   private fervor = JUICE.fervorBaseStart;
   private ended = false;
 
+  // Battle source: a stable-driven fight (player team + bot), or the standalone demo.
+  private playerUnits: UnitSpec[] | null = null;
+  private fromStable = false;
+
   constructor() {
     super('Arena');
   }
 
+  init(data: { playerUnits?: UnitSpec[]; fromStable?: boolean }): void {
+    this.playerUnits = data.playerUnits ?? null;
+    this.fromStable = data.fromStable ?? false;
+  }
+
   create(): void {
+    this.resetState();
     this.cameras.main.setBackgroundColor(0x14110d);
 
-    const config = demoBattleConfig();
+    const config: BattleConfig = this.playerUnits
+      ? { seed: DEMO_SEED, units: [...this.playerUnits, ...botTeam()] }
+      : demoBattleConfig();
     this.result = simulate(config);
     this.playback = new BattlePlayback(this.result, config.units);
     this.bounds = computeBounds(this.result);
@@ -153,10 +165,31 @@ export class Arena extends Scene {
       .setDepth(30);
 
     this.layout();
-    this.scale.on('resize', () => this.layout());
+    // Resize fires on the game-global ScaleManager, so drop the listener when this
+    // scene shuts down or restarts — otherwise stale handlers stack up.
+    const onResize = (): void => this.layout();
+    this.scale.on('resize', onResize);
+    this.events.once('shutdown', () => this.scale.off('resize', onResize));
 
-    this.input.on('pointerdown', () => this.replay());
+    this.input.on('pointerdown', () => this.onTap());
     this.input.keyboard?.on('keydown-R', () => this.replay());
+  }
+
+  private resetState(): void {
+    // Cleared per create() because the Scene instance is reused across restarts.
+    this.views = [];
+    this.ended = false;
+    this.hitPauseMs = 0;
+    this.slowMoMs = 0;
+    this.fervor = JUICE.fervorBaseStart;
+  }
+
+  private onTap(): void {
+    if (this.ended && this.fromStable) {
+      this.scene.start('Stable');
+    } else {
+      this.replay();
+    }
   }
 
   override update(time: number, delta: number): void {
@@ -355,6 +388,7 @@ export class Arena extends Scene {
       this.banner.setColor('#ffffff');
     }
     this.banner.setVisible(true);
+    if (this.fromStable) this.hintText.setText('tap — retour à l’écurie');
   }
 
   // --- world→screen fit ---------------------------------------------------
