@@ -9,7 +9,7 @@ Design : `CONCEPT.md`. Protocole d'exécution : `AGENTS.md`.
 | 0 | Setup Devvit + Phaser | — | done |
 | 1 | Sim headless déterministe | 0 | done |
 | 2 | Rendu Phaser + juice | 1 | done |
-| 3 | Écurie & progression | 0 | not-started |
+| 3 | Écurie & progression | 0 | done |
 | 4 | Loop quotidienne & arène | 2, 3 | not-started |
 | 5 | Pari=vote & ferveur | 4 | not-started |
 | 6 | Rétention (streak, leaderboard) | 3 | not-started |
