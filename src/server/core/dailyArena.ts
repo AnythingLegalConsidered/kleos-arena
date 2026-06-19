@@ -23,6 +23,7 @@ import { applyArenaSettlement } from './stableStore';
 
 const GHOSTS_KEY = 'arena:ghosts';
 const LATEST_RESOLVED_KEY = 'arena:latest-resolved';
+const POST_CLAIMS_KEY = 'arena:post-claims';
 
 export type ArenaStatus = {
   arena: DailyArena;
@@ -110,11 +111,30 @@ export async function openDailyArena(day: string): Promise<DailyArena> {
   const arena = await loadDailyArena(day);
   if (arena.postId) return arena;
 
+  const claimed = await redis.hSetNX(POST_CLAIMS_KEY, day, 'creating');
+  if (claimed === 0) {
+    const claimedPostId = await redis.hGet(POST_CLAIMS_KEY, day);
+    if (claimedPostId && claimedPostId !== 'creating') {
+      arena.postId = claimedPostId;
+      await saveArena(arena);
+      return arena;
+    }
+    throw new Error(`daily arena post ${day} is already being created`);
+  }
+
   const god = godById(arena.godId);
-  const post = await createPost(`KLEOS · Arène du ${day} · ${god.name}`);
-  arena.postId = post.id;
-  await saveArena(arena);
-  return arena;
+  let createdPostId: string | null = null;
+  try {
+    const post = await createPost(`KLEOS · Arène du ${day} · ${god.name}`);
+    createdPostId = post.id;
+    await redis.hSet(POST_CLAIMS_KEY, { [day]: createdPostId });
+    arena.postId = createdPostId;
+    await saveArena(arena);
+    return arena;
+  } catch (error) {
+    if (!createdPostId) await redis.hDel(POST_CLAIMS_KEY, [day]);
+    throw error;
+  }
 }
 
 export async function runDailyTick(

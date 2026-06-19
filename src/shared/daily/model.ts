@@ -162,8 +162,8 @@ export function resolveArena(arena: DailyArena): DailyArena {
       const winner = pickWinner(teamA, teamB, result, seed);
       const loser = winner.id === teamA.id ? teamB : teamA;
       eliminatedRound.set(loser.id, round);
-      mergeInjuries(injuries, teamA, result, 'red');
-      mergeInjuries(injuries, teamB, result, 'blue');
+      mergeInjuries(injuries, teamA, result);
+      mergeInjuries(injuries, teamB, result);
       winners.push(winner);
       matches.push({
         round,
@@ -293,8 +293,7 @@ function totalHp(result: BattleResult, team: TeamSnapshot): number {
 function mergeInjuries(
   all: Map<string, Record<string, number>>,
   team: TeamSnapshot,
-  result: BattleResult,
-  teamId: string
+  result: BattleResult
 ): void {
   if (team.kind !== 'player') return;
   const current = all.get(team.id) ?? {};
@@ -306,7 +305,7 @@ function mergeInjuries(
     const foughtForTeam = result.frames.some((frame) =>
       frame.units.some((unit) => unit.id === gladiator.id)
     );
-    if (!foughtForTeam || (teamId !== 'red' && teamId !== 'blue')) continue;
+    if (!foughtForTeam) continue;
     const injury =
       Math.round(Math.min(1, Math.max(0, 1 - finalHp / maxHp)) * 100) / 100;
     current[gladiator.id] = Math.max(current[gladiator.id] ?? 0, injury);
