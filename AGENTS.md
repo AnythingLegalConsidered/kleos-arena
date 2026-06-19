@@ -24,14 +24,26 @@ changement → tu t'arrêtes, tu écris la proposition dans le `Handoff` de la p
 1. Prends la prochaine phase `not-started` sans dépendance ouverte (`ROADMAP.md`).
 2. `phases/PHASE-N.md` : `Status: in-progress`, renseigne `Harness:`.
 3. Fais les `Tasks` (coche `- [x]`).
-4. Satisfais **toutes** les lignes `Verify` — c'est ça "done", pas "ça compile".
-5. Commits **atomiques** : 1 unité cohérente = 1 commit, message anglais impératif.
-6. MAJ `Handoff` (fait / reste / pièges) = le bâton de relais.
-7. `Status: done`, puis MAJ `ROADMAP.md`.
+4. Satisfais les `Verify`. Deux natures, à ne pas confondre :
+   - **Verify auto** (`test`, `type-check`, `lint`, `build`) → **bloquant**. Tant qu'un échoue,
+     la phase n'est pas `done`. C'est ça "done", pas "ça compile".
+   - **Verify manuel** (playtest Reddit, contrôle visuel) → si non fait, ne le marque PAS
+     satisfait : note-le `deferred` dans le `Handoff` **et** ouvre une ligne dans `DEBT.md`.
+     Jamais de `Verify` silencieusement sauté.
+5. Commits **atomiques** : 1 unité cohérente = 1 commit, message anglais impératif. Ajoute un
+   trailer `Assisted-by: <harnais>` (ex. `Assisted-by: Codex GPT-5`) pour tracer qui a produit quoi.
+6. **Review cross-harnais avant `done`** : un harnais ≠ celui qui a codé relit la phase (ou
+   `/review-multi`). Les findings partent corrigés dans le `Handoff`, ou différés dans `DEBT.md`.
+   Une phase ne passe pas `done` avec un finding **bloquant** non traité.
+7. MAJ `Handoff` (fait / reste / pièges) = le bâton de relais.
+8. `Status: done`, puis MAJ `ROADMAP.md`.
 
 ## Discipline de code
 - **Surgical** : chaque ligne trace au besoin de la phase. Pas de refactor adjacent. Garde le style existant.
 - **Goal-driven** : bug → écris d'abord le test qui le reproduit.
+- **Mutation d'or / d'économie partagée = atomique**. `WATCH`/`MULTI`/`EXEC`, ou claim `hSetNX` +
+  écriture dans le **même** `MULTI`. Jamais "claim puis write" en deux temps : un crash serverless
+  entre les deux corrompt le solde (cf. `DEBT-001`).
 - Code et commentaires **en anglais**. Docs / prose / `Handoff` **en français**.
 - Aucune dépendance nouvelle sans raison forte.
 
@@ -65,6 +77,7 @@ Le **BACKLOG** de `CONCEPT.md` (multi-civilisations, itémisation profonde, dieu
 - `npm run dev` — playtest live sur Reddit (`devvit playtest`).
 - `npm run build` — build Vite. `npm run type-check` — `tsc --build`. `npm run lint` — eslint. `npm run prettier`.
 - `npm run deploy` — type-check + lint + `devvit upload`. `npm run launch` — deploy + publish. `npm run login`.
+- **CI** : `.github/workflows/ci.yml` rejoue `type-check` + `lint` + `test` + `build` sur chaque push / PR (jamais de deploy).
 
 ## Code style (template)
 - Préfère les `type` aux `interface`. Exports **nommés**. Ne **cast** jamais les types TS.
@@ -73,7 +86,8 @@ Le **BACKLOG** de `CONCEPT.md` (multi-civilisations, itémisation profonde, dieu
 - **Phaser 4.1.0** (pas 3). **Node >=22.2.0** (Node 24 OK, install validée).
 - Pas de tRPC dans ce scaffold malgré d'anciennes mentions du template : communication via routes Hono
   (`src/server/routes/api.ts`) + `src/shared/api.ts`.
-- **Pas de runner de test configuré** (aucun script `test`). À ajouter en Phase 1 (vitest, cohérent avec
-  Vite) pour les assertions de déterminisme.
+- **Tests : vitest configuré** (`vitest.config.ts`). Scripts `npm test` (run) et `npm run test:watch`.
+  Suites dans `test/` (sim, daily, stable, betting, client). La couche **serveur** (atomicité,
+  idempotence, concurrence Redis) n'est PAS couverte — cf. `DEBT-004`.
 
 Docs Devvit (pour agents) : https://developers.reddit.com/docs/llms.txt
