@@ -1,6 +1,6 @@
 # PHASE 4 — Loop quotidienne & arène
-Status: not-started
-Harness: —
+Status: in-progress
+Harness: Codex GPT-5
 
 ## Goal
 Une arène quotidienne s'ouvre ; l'équipe joue une qualif instant + entre dans un bracket résolu au tick.
