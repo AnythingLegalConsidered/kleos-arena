@@ -21,6 +21,7 @@ export type DecrementResponse = {
 
 import type { AttributeKey, Stable } from './stable';
 import type { ArenaSettlement, GodDefinition } from './daily';
+import type { ArenaBet } from './betting';
 import type { BattleConfig } from './sim';
 
 /** Current player's stable, as returned by GET /api/stable. */
@@ -57,6 +58,22 @@ export type ArenaStatusResponse = {
   participantCount: number;
   qualifier: ArenaQualifierSummary | null;
   result: ArenaSettlement | null;
+  featuredMatches: FeaturedMatchSummary[];
+  bets: ArenaBet[];
+  latestBetPayout: number | null;
+};
+
+export type FeaturedTeamSummary = {
+  id: string;
+  name: string;
+  odds: number;
+  fervor: number;
+};
+
+export type FeaturedMatchSummary = {
+  id: string;
+  teamA: FeaturedTeamSummary;
+  teamB: FeaturedTeamSummary;
 };
 
 export type ArenaEntryResponse = {
@@ -70,4 +87,16 @@ export type ArenaEntryResponse = {
 export type ArenaErrorResponse = {
   type: 'error';
   error: string;
+};
+
+export type ArenaBetRequest = {
+  matchId: string;
+  teamId: string;
+  stake: number;
+};
+
+export type ArenaBetResponse = {
+  type: 'bet';
+  bet: ArenaBet;
+  gold: number;
 };

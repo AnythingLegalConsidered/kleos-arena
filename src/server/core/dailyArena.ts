@@ -2,12 +2,25 @@ import { redis } from '@devvit/web/server';
 import {
   DAILY_ARENA_VERSION,
   createDailyArena,
+  createFeaturedMatches,
   enterArena,
   godById,
   resolveArena,
   snapshotStable,
   utcDay,
 } from '../../shared/daily';
+import {
+  BET_STAKES,
+  applyBetPayout,
+  fervorFromBets,
+  settleBets,
+} from '../../shared/betting';
+import type {
+  ArenaBet,
+  BetPayout,
+  FeaturedMatch,
+  FervorByTeam,
+} from '../../shared/betting';
 import type {
   ArenaEntry,
   ArenaSettlement,
@@ -19,17 +32,26 @@ import type { BattleConfig, UnitSpec, WeaponArchetype } from '../../shared/sim';
 import { parseStable } from '../../shared/stable';
 import type { Stable } from '../../shared/stable';
 import { createPost } from './post';
-import { applyArenaSettlement } from './stableStore';
+import {
+  applyArenaSettlement,
+  loadOrCreateStable,
+  saveStable,
+} from './stableStore';
 
 const GHOSTS_KEY = 'arena:ghosts';
 const LATEST_RESOLVED_KEY = 'arena:latest-resolved';
 const POST_CLAIMS_KEY = 'arena:post-claims';
+const BETTING_LOCK_TTL_MS = 120_000;
 
 export type ArenaStatus = {
   arena: DailyArena;
   entry: ArenaEntry | null;
   latestSettlement: ArenaSettlement | null;
   participantCount: number;
+  featuredMatches: FeaturedMatch[];
+  bets: ArenaBet[];
+  fervor: FervorByTeam;
+  latestBetPayout: number | null;
 };
 
 export async function getCurrentArenaStatus(
@@ -42,12 +64,91 @@ export async function getCurrentArenaStatus(
     arena.status === 'resolved' ? arena.entries : await loadEntries(day);
   const entry =
     entries.find((candidate) => candidate.team.ownerId === username) ?? null;
+  const featuredMatches =
+    arena.status === 'open'
+      ? await ensureFeaturedMatches(
+          day,
+          entries.map((candidate) => candidate.team),
+          await loadGhosts(),
+          arena.godId
+        )
+      : await loadFeaturedMatches(day);
+  const bets = await loadBets(day);
   return {
     arena,
     entry,
     latestSettlement: await getLatestSettlement(username),
     participantCount: entries.length,
+    featuredMatches,
+    bets: bets.filter((bet) => bet.ownerId === username),
+    fervor: fervorFromBets(bets),
+    latestBetPayout: await getLatestBetPayout(username),
   };
+}
+
+export async function placeCurrentBet(
+  username: string,
+  matchId: string,
+  teamId: string,
+  stake: number,
+  now = new Date()
+): Promise<{ bet: ArenaBet; gold: number }> {
+  if (!BET_STAKES.some((allowed) => allowed === stake))
+    throw new Error('invalid stake');
+
+  const day = utcDay(now);
+  return withBettingLock(day, async () => {
+    const arena = await loadDailyArena(day);
+    if (arena.status !== 'open') throw new Error('betting is closed');
+
+    const entries = await loadEntries(day);
+    const featured = await ensureFeaturedMatches(
+      day,
+      entries.map((entry) => entry.team),
+      await loadGhosts(),
+      arena.godId
+    );
+    const match = featured.find((candidate) => candidate.id === matchId);
+    if (!match) throw new Error('unknown featured match');
+    if (match.teamA.ownerId === username || match.teamB.ownerId === username)
+      throw new Error('cannot bet on your own match');
+
+    const odds =
+      teamId === match.teamA.id
+        ? match.oddsA
+        : teamId === match.teamB.id
+          ? match.oddsB
+          : null;
+    if (odds === null) throw new Error('unknown featured team');
+
+    const field = betField(username, matchId);
+    const existing = parseArenaBet(await redis.hGet(betsKey(day), field));
+    if (existing) {
+      const stable = await loadOrCreateStable(username);
+      return { bet: existing, gold: stable.gold };
+    }
+
+    const stable = await loadOrCreateStable(username);
+    if (stable.gold < stake) throw new Error('not enough gold');
+    const bet: ArenaBet = {
+      id: `${day}:${field}`,
+      ownerId: username,
+      matchId,
+      teamId,
+      stake,
+      odds,
+    };
+
+    await redis.hSet(betsKey(day), { [field]: JSON.stringify(bet) });
+    try {
+      stable.gold -= stake;
+      await saveStable(stable);
+    } catch (error) {
+      await redis.hDel(betsKey(day), [field]);
+      throw error;
+    }
+    return { bet, gold: stable.gold };
+  });
 }
 
 export async function enterCurrentArena(
@@ -93,18 +194,43 @@ export async function enterCurrentArena(
 }
 
 export async function resolveDailyArena(day: string): Promise<DailyArena> {
-  const arena = await loadDailyArena(day);
-  if (arena.status === 'open') {
-    arena.entries = await loadEntries(day);
-    resolveArena(arena);
-    await saveArena(arena);
-    await redis.set(LATEST_RESOLVED_KEY, day);
-  }
+  return withBettingLock(day, async () => {
+    const arena = await loadDailyArena(day);
+    const entries = await loadEntries(day);
+    const featuredMatches =
+      arena.status === 'open'
+        ? await ensureFeaturedMatches(
+            day,
+            entries.map((entry) => entry.team),
+            await loadGhosts(),
+            arena.godId
+          )
+        : await loadFeaturedMatches(day);
+    const bets = await loadBets(day);
+    if (arena.status === 'open') {
+      arena.entries = entries;
+      resolveArena(arena, {
+        featuredMatches,
+        fervor: fervorFromBets(bets),
+      });
+      await saveArena(arena);
+      await redis.set(LATEST_RESOLVED_KEY, day);
+    }
 
-  await Promise.all(
-    arena.settlements.map((settlement) => applyArenaSettlement(day, settlement))
-  );
-  return arena;
+    await Promise.all(
+      arena.settlements.map((settlement) =>
+        applyArenaSettlement(day, settlement)
+      )
+    );
+    if (bets.length > 0) {
+      const payouts = settleBets(bets, {
+        featuredMatches,
+        bracketMatches: arena.matches,
+      });
+      for (const payout of payouts) await applyBetSettlement(day, payout);
+    }
+    return arena;
+  });
 }
 
 export async function openDailyArena(day: string): Promise<DailyArena> {
@@ -161,6 +287,101 @@ async function getLatestSettlement(
   );
 }
 
+async function getLatestBetPayout(username: string): Promise<number | null> {
+  const day = await redis.get(LATEST_RESOLVED_KEY);
+  if (!day) return null;
+  const payouts = Object.values(await redis.hGetAll(payoutsKey(day)))
+    .map(parseBetPayout)
+    .filter((payout): payout is BetPayout => payout !== null)
+    .filter((payout) => payout.ownerId === username);
+  if (payouts.length === 0) return null;
+  return payouts.reduce((total, payout) => total + payout.gold, 0);
+}
+
+async function ensureFeaturedMatches(
+  day: string,
+  entrants: readonly TeamSnapshot[],
+  ghosts: readonly TeamSnapshot[],
+  godId: GodId
+): Promise<FeaturedMatch[]> {
+  const existing = await loadFeaturedMatches(day);
+  if (existing.length > 0) return existing;
+
+  const featured = createFeaturedMatches(
+    day,
+    [...entrants, ...ghosts],
+    godById(godId)
+  );
+  await redis.set(featuredKey(day), JSON.stringify(featured), { nx: true });
+  const persisted = await loadFeaturedMatches(day);
+  return persisted.length > 0 ? persisted : featured;
+}
+
+async function loadFeaturedMatches(day: string): Promise<FeaturedMatch[]> {
+  const value = parseJson(await redis.get(featuredKey(day)));
+  if (!Array.isArray(value) || !value.every(isFeaturedMatch)) return [];
+  return value;
+}
+
+async function loadBets(day: string): Promise<ArenaBet[]> {
+  return Object.values(await redis.hGetAll(betsKey(day)))
+    .map(parseArenaBet)
+    .filter((bet): bet is ArenaBet => bet !== null)
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+async function applyBetSettlement(
+  day: string,
+  payout: BetPayout
+): Promise<boolean> {
+  const value = JSON.stringify(payout);
+  const claimed = await redis.hSetNX(payoutsKey(day), payout.betId, value);
+  if (claimed === 0) return false;
+
+  try {
+    if (payout.gold > 0) {
+      const stable = await loadOrCreateStable(payout.ownerId);
+      applyBetPayout(stable, payout);
+      await saveStable(stable);
+    }
+    return true;
+  } catch (error) {
+    await redis.hDel(payoutsKey(day), [payout.betId]);
+    throw error;
+  }
+}
+
+async function withBettingLock<T>(
+  day: string,
+  action: () => Promise<T>
+): Promise<T> {
+  const key = `arena:betting-lock:${day}`;
+  const token = `${Date.now()}:${Math.random()}`;
+  let acquired = false;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const result = await redis.set(key, token, {
+      nx: true,
+      expiration: new Date(Date.now() + BETTING_LOCK_TTL_MS),
+    });
+    if (result === 'OK') {
+      acquired = true;
+      break;
+    }
+    await delay(50);
+  }
+  if (!acquired) throw new Error('betting is busy');
+
+  try {
+    return await action();
+  } finally {
+    if ((await redis.get(key)) === token) await redis.del(key);
+  }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 async function loadDailyArena(day: string): Promise<DailyArena> {
   const key = arenaKey(day);
   const stored = parseDailyArena(await redis.get(key));
@@ -197,6 +418,22 @@ function arenaKey(day: string): string {
 
 function entriesKey(day: string): string {
   return `arena:entries:${day}`;
+}
+
+function featuredKey(day: string): string {
+  return `arena:featured:${day}`;
+}
+
+function betsKey(day: string): string {
+  return `arena:bets:${day}`;
+}
+
+function payoutsKey(day: string): string {
+  return `arena:bet-payouts:${day}`;
+}
+
+function betField(username: string, matchId: string): string {
+  return `${username}:${matchId}`;
 }
 
 function parseDailyArena(json: string | null | undefined): DailyArena | null {
@@ -242,6 +479,16 @@ function parseTeamSnapshot(
   return isTeamSnapshot(value) ? value : null;
 }
 
+function parseArenaBet(json: string | null | undefined): ArenaBet | null {
+  const value = parseJson(json);
+  return isArenaBet(value) ? value : null;
+}
+
+function parseBetPayout(json: string | null | undefined): BetPayout | null {
+  const value = parseJson(json);
+  return isBetPayout(value) ? value : null;
+}
+
 function parseJson(json: string | null | undefined): unknown {
   if (!json) return null;
   try {
@@ -256,6 +503,38 @@ function isArenaEntry(value: unknown): value is ArenaEntry {
     isRecord(value) &&
     isTeamSnapshot(value.team) &&
     isQualifier(value.qualifier)
+  );
+}
+
+function isFeaturedMatch(value: unknown): value is FeaturedMatch {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    isTeamSnapshot(value.teamA) &&
+    isTeamSnapshot(value.teamB) &&
+    typeof value.oddsA === 'number' &&
+    typeof value.oddsB === 'number'
+  );
+}
+
+function isArenaBet(value: unknown): value is ArenaBet {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.ownerId === 'string' &&
+    typeof value.matchId === 'string' &&
+    typeof value.teamId === 'string' &&
+    typeof value.stake === 'number' &&
+    typeof value.odds === 'number'
+  );
+}
+
+function isBetPayout(value: unknown): value is BetPayout {
+  return (
+    isRecord(value) &&
+    typeof value.betId === 'string' &&
+    typeof value.ownerId === 'string' &&
+    typeof value.gold === 'number'
   );
 }
 
