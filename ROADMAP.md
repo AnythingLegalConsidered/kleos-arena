@@ -6,7 +6,7 @@ Design : `CONCEPT.md`. Protocole d'exécution : `AGENTS.md`.
 ## Phases
 | # | Phase | Dépend de | Status |
 |---|---|---|---|
-| 0 | Setup Devvit + Phaser | — | in-progress |
+| 0 | Setup Devvit + Phaser | — | done |
 | 1 | Sim headless déterministe | 0 | not-started |
 | 2 | Rendu Phaser + juice | 1 | not-started |
 | 3 | Écurie & progression | 0 | not-started |

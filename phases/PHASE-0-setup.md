@@ -1,5 +1,5 @@
 # PHASE 0 — Setup Devvit + Phaser
-Status: in-progress
+Status: done
 Harness: claude (cadrage + merge repo) → toi (auth Reddit + playtest)
 
 ## Goal
@@ -18,7 +18,7 @@ Un post Devvit de playtest affiche un canvas Phaser qui tourne.
 - [x] Scaffold : `npm create devvit@latest --template=phaser` → app `kleos-arena`.
 - [x] Consolidation : docs de planif + AGENTS.md fusionné dans `kleos-arena` (repo canonique).
 - [x] Structure réelle figée dans CONCEPT.md + AGENTS.md (§2).
-- [ ] `npm run dev` (= `devvit playtest`) : un canvas Phaser s'affiche dans un post de playtest. ← reste (auth Reddit + subreddit de test).
+- [x] `npm run dev` (= `devvit playtest`) : canvas Phaser visible et interactif dans le post de playtest (subreddit `kleos_arena_dev`, app v0.0.1.1).
 
 ## Verify
 - Un post de playtest rend un canvas Phaser visible et interactif.
@@ -31,4 +31,5 @@ Un post Devvit de playtest affiche un canvas Phaser qui tourne.
   Plus `public/`, `tools/`, `devvit.json`, `vite.config.ts`.
 - **Repo canonique** : `kleos-arena` (git `main`, root-commit créé au merge). Ancien dossier
   `Hackaton Reddit 2026` superseded (planif copiée) → supprimable.
-- **Reste** : playtest non lancé (besoin auth Reddit + subreddit de test). Aucun runner de test (→ Phase 1, vitest).
+- **Playtest** : lancé sur `r/kleos_arena_dev` (`npm run dev`), app v0.0.1.1 ; canvas vérifié de visu (interaction OK : incrément + game over). Warning template `scripts.dev did not produce expected build outputs within 60s` = non bloquant (assets uploadés, playtest ready).
+- **Reste** : aucun runner de test (→ Phase 1, vitest).
