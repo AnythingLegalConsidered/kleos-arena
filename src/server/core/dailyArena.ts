@@ -35,7 +35,6 @@ import { createPost } from './post';
 import {
   applyArenaSettlement,
   loadOrCreateStable,
-  saveStable,
   stableKey,
 } from './stableStore';
 
@@ -43,6 +42,7 @@ const GHOSTS_KEY = 'arena:ghosts';
 const LATEST_RESOLVED_KEY = 'arena:latest-resolved';
 const POST_CLAIMS_KEY = 'arena:post-claims';
 const BETTING_LOCK_TTL_MS = 120_000;
+const SETTLEMENT_ATTEMPTS = 20;
 
 export type ArenaStatus = {
   arena: DailyArena;
@@ -150,7 +150,9 @@ export async function placeCurrentBet(
     await transaction.hSet(betsKey(day), { [field]: JSON.stringify(bet) });
     await transaction.set(stableKey(username), JSON.stringify(stable));
     const results = await transaction.exec();
-    if (results.length !== 2) throw new Error('betting is busy');
+    // exec() returns null when WATCH was aborted by a concurrent write to the
+    // same stable; treat it as contention rather than a TypeError (DEBT-003).
+    if (!results || results.length !== 2) throw new Error('betting is busy');
     return { bet, gold: stable.gold };
   });
 }
@@ -339,20 +341,32 @@ async function applyBetSettlement(
   payout: BetPayout
 ): Promise<boolean> {
   const value = JSON.stringify(payout);
-  const claimed = await redis.hSetNX(payoutsKey(day), payout.betId, value);
-  if (claimed === 0) return false;
+  // No gold to credit: an idempotent claim has no balance to corrupt.
+  if (payout.gold <= 0)
+    return (await redis.hSetNX(payoutsKey(day), payout.betId, value)) === 1;
 
-  try {
-    if (payout.gold > 0) {
-      const stable = await loadOrCreateStable(payout.ownerId);
-      applyBetPayout(stable, payout);
-      await saveStable(stable);
+  // Claim and credit must commit in the same MULTI: a crash between the two
+  // would otherwise mark the payout settled without ever paying it (DEBT-001).
+  await loadOrCreateStable(payout.ownerId);
+  for (let attempt = 0; attempt < SETTLEMENT_ATTEMPTS; attempt++) {
+    const transaction = await redis.watch(
+      payoutsKey(day),
+      stableKey(payout.ownerId)
+    );
+    if (await redis.hGet(payoutsKey(day), payout.betId)) {
+      await transaction.unwatch();
+      return false;
     }
-    return true;
-  } catch (error) {
-    await redis.hDel(payoutsKey(day), [payout.betId]);
-    throw error;
+    const stable = await loadOrCreateStable(payout.ownerId);
+    applyBetPayout(stable, payout);
+    await transaction.multi();
+    await transaction.hSet(payoutsKey(day), { [payout.betId]: value });
+    await transaction.set(stableKey(payout.ownerId), JSON.stringify(stable));
+    const results = await transaction.exec();
+    if (results && results.length === 2) return true;
+    await delay(50);
   }
+  throw new Error('bet settlement is busy');
 }
 
 async function withBettingLock<T>(

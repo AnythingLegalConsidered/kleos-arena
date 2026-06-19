@@ -23,21 +23,37 @@ export async function saveStable(stable: Stable): Promise<void> {
   await redis.set(stableKey(stable.ownerId), JSON.stringify(stable));
 }
 
+const SETTLEMENT_ATTEMPTS = 20;
+
 export async function applyArenaSettlement(
   day: string,
   settlement: ArenaSettlement
 ): Promise<boolean> {
   const claimKey = `arena:settled:${day}`;
-  const claimed = await redis.hSetNX(claimKey, settlement.ownerId, 'claimed');
-  if (claimed === 0) return false;
-
-  try {
+  // Claim and credit must commit in the same MULTI: a crash between the two
+  // would otherwise mark the owner settled without ever applying it (DEBT-001).
+  await loadOrCreateStable(settlement.ownerId);
+  for (let attempt = 0; attempt < SETTLEMENT_ATTEMPTS; attempt++) {
+    const transaction = await redis.watch(
+      claimKey,
+      stableKey(settlement.ownerId)
+    );
+    if (await redis.hGet(claimKey, settlement.ownerId)) {
+      await transaction.unwatch();
+      return false;
+    }
     const stable = await loadOrCreateStable(settlement.ownerId);
     applySettlement(stable, settlement);
-    await saveStable(stable);
-    return true;
-  } catch (error) {
-    await redis.hDel(claimKey, [settlement.ownerId]);
-    throw error;
+    await transaction.multi();
+    await transaction.hSet(claimKey, { [settlement.ownerId]: 'claimed' });
+    await transaction.set(stableKey(settlement.ownerId), JSON.stringify(stable));
+    const results = await transaction.exec();
+    if (results && results.length === 2) return true;
+    await delay(50);
   }
+  throw new Error('arena settlement is busy');
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
