@@ -16,7 +16,11 @@ Sévérités : `high` · `medium` · `low`.
 | DEBT-004 | medium | Couche serveur non testée (atomicité / idempotence / concurrence) | Phases 4-5 | deferred |
 | DEBT-005 | medium | 37 vulns `npm audit` (dont 6 high) héritées du scaffold | Phase 0 | watching |
 | DEBT-006 | low | Parallélisation des phases via git worktrees inexploitée | Process | deferred |
-| DEBT-007 | low | Équilibrage paris : favori clampé à 1.2 = +EV ; « marché auto-équilibré » ≠ impl | Phase 5 | open |
+| DEBT-007 | medium | Équilibrage paris : favori clampé à 1.2 = +EV ; « marché auto-équilibré » ≠ impl | Phase 5 | open |
+| DEBT-008 | medium | Claim `'creating'` du post quotidien sans TTL → zombie sur crash | Review 2026-06-19 | open |
+| DEBT-009 | low | `withBettingLock` libère le lock via `get`+`del` non atomique | Review 2026-06-19 | open |
+| DEBT-010 | medium | Settlements non rejouables : throw après 20 retries, pas de dead-letter | Review 2026-06-19 | deferred |
+| DEBT-011 | medium | Routes économiques acceptent `anonymous` ; pas de rate limit | Review 2026-06-19 | open |
 
 ---
 
@@ -29,7 +33,11 @@ aussi possible si un achat écurie tombe pendant le tick.
 **Résolu** : `applyBetSettlement` et `applyArenaSettlement` réécrits en `WATCH`/`MULTI`/`EXEC`
 (claim + écriture du solde dans le même `EXEC`, retry borné sur abort, plus de claim orphelin
 sans crédit). Payout perdant (`gold === 0`) garde un simple `hSetNX` (aucun solde à corrompre).
-Vérifié par `type-check`/`lint`/`build` ; couverture unitaire serveur reste sous `DEBT-004`.
+**Moitié manquante (review 2026-06-19, finding T1)** : `stable.post('/action')` restait en
+load-mutate-save sans `WATCH` — une dépense d'écurie concurrente d'un payout écrasait le crédit
+(lost-update). Corrigé via `mutateStableAtomically` (read-modify-write sous `WATCH`/`MULTI`/`EXEC`,
+retry borné, aucune écriture sur mutation refusée). Tous les writers de `stable:${user}` passent
+désormais par `WATCH`. Vérifié par `type-check`/`lint`/`build` ; couverture unitaire serveur reste sous `DEBT-004`.
 
 ## DEBT-002 — `settleBets` throw global bloque tous les payouts
 **Problème** : si un featured n'est pas retrouvé dans le bracket, le throw avorte **tout**
@@ -74,3 +82,35 @@ bornée mais sans risque. (b) La spec dit « marché auto-équilibré » mais le
 de la force pure et ne bougent pas avec le volume de mises.
 **Où** : `oddsForConfig` ([src/shared/betting/model.ts](src/shared/betting/model.ts#L18-L28)).
 **Action** : décision de design (tuning bornes / vig, ou réécrire le contrat). Non bloquant v1.
+**Note review 2026-06-19** : les 3 reviewers confirment le favori +EV → bumpé `low` → `medium` (finding T8).
+
+---
+
+> Findings versés depuis la review multi-LLM `reviews/range-critical-2026-06-19-1956`
+> (settlements durcis, mais races Redis résiduelles non couvertes). Tickets T3/T4/T5/T9.
+
+## DEBT-008 — Claim `'creating'` du post quotidien sans TTL
+**Problème** : le claim `'creating'` dans `POST_CLAIMS_KEY` n'a pas d'expiration. Un crash
+serverless entre le claim et la création du post laisse un claim zombie qui bloque toute
+re-création du post du jour.
+**Où** : `dailyArena.ts:242-267` (review, finding T3).
+**Action** : remplacer le field hash `'creating'` par une clé `SET NX EX` par jour avec TTL.
+
+## DEBT-009 — `withBettingLock` libère le lock non atomiquement
+**Problème** : la libération fait `get` puis `del` en deux temps. Fenêtre où le lock d'un autre
+process peut être supprimé par erreur. Faible probabilité, pas de corruption d'or directe.
+**Où** : `dailyArena.ts:372-395` (review, finding T4).
+**Action** : libération atomique via Lua/`EVAL` si dispo, ou supprimer le `del` et laisser le TTL expirer.
+
+## DEBT-010 — Settlements non rejouables (pas de dead-letter)
+**Problème** : un settlement échoue définitivement après 20 retries, traité séquentiellement, sans
+file de retry ni dead-letter. Un payout durablement contendu reste impayé sans trace exploitable.
+**Où** : `dailyArena.ts:231-237/369`, `stableStore.ts` (review, finding T5).
+**Action** : journaliser les settlements échoués et permettre un retry idempotent. Chantier → couplé
+au harness de test serveur (`DEBT-004`), post-submission si la deadline serre.
+
+## DEBT-011 — Routes économiques : `anonymous` accepté, pas de rate limit
+**Problème** : plusieurs routes font `getCurrentUsername() ?? 'anonymous'` — un utilisateur non
+authentifié partage l'écurie/le solde `anonymous`. Aucun rate limit sur les routes de dépense.
+**Où** : `arena.ts:21/66/90`, `stable.ts:18/24`, `api.ts:45` (review, finding T9).
+**Action** : refuser `anonymous` sur les routes à enjeu (or, paris) ; rate limit simple sur les dépenses.
