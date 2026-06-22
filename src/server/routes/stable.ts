@@ -7,7 +7,7 @@ import type {
   StableActionResponse,
   StableResponse,
 } from '../../shared/api';
-import { loadOrCreateStable, saveStable } from '../core/stableStore';
+import { loadOrCreateStable, mutateStableAtomically } from '../core/stableStore';
 
 // Authoritative stable persistence. The server owns every spend (anti-cheat,
 // CONCEPT: serveur = autorité aux enjeux) and is the only writer of the Redis
@@ -30,8 +30,9 @@ stable.post('/action', async (c) => {
     );
   }
 
-  const s = await loadOrCreateStable(username);
-  const result = applyAction(s, action);
+  const { result, stable: s } = await mutateStableAtomically(username, (st) =>
+    applyAction(st, action)
+  );
   if (!result.ok) {
     return c.json<StableActionResponse>(
       { type: 'error', error: result.error },
@@ -39,7 +40,6 @@ stable.post('/action', async (c) => {
     );
   }
 
-  await saveStable(s);
   return c.json<StableActionResponse>({ type: 'stable', stable: s });
 });
 

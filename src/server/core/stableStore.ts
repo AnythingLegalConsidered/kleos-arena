@@ -1,7 +1,7 @@
 import { redis } from '@devvit/web/server';
 import { createDefaultStable, parseStable } from '../../shared/stable';
 import { applySettlement, type ArenaSettlement } from '../../shared/daily';
-import type { Stable } from '../../shared/stable';
+import type { ActionResult, Stable } from '../../shared/stable';
 
 export function stableKey(username: string): string {
   return `stable:${username}`;
@@ -24,6 +24,32 @@ export async function saveStable(stable: Stable): Promise<void> {
 }
 
 const SETTLEMENT_ATTEMPTS = 20;
+
+// Stable spends (gold) must read-modify-write under WATCH: the same key is
+// credited transactionally by settlements, so a plain load-mutate-save would
+// silently drop a concurrent payout (lost-update, DEBT-001). A rejected
+// mutation (ok === false) writes nothing; an aborted EXEC retries.
+export async function mutateStableAtomically(
+  username: string,
+  mutate: (stable: Stable) => ActionResult
+): Promise<{ result: ActionResult; stable: Stable }> {
+  await loadOrCreateStable(username);
+  for (let attempt = 0; attempt < SETTLEMENT_ATTEMPTS; attempt++) {
+    const transaction = await redis.watch(stableKey(username));
+    const stable = await loadOrCreateStable(username);
+    const result = mutate(stable);
+    if (!result.ok) {
+      await transaction.unwatch();
+      return { result, stable };
+    }
+    await transaction.multi();
+    await transaction.set(stableKey(username), JSON.stringify(stable));
+    const results = await transaction.exec();
+    if (results && results.length === 1) return { result, stable };
+    await delay(50);
+  }
+  throw new Error('stable is busy');
+}
 
 export async function applyArenaSettlement(
   day: string,
