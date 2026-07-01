@@ -27,13 +27,6 @@
         "endpoint": "/internal/menu/post-create"
       },
       {
-        "label": "Example form",
-        "description": "Show a simple form",
-        "location": "subreddit",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/example-form"
-      },
-      {
         "label": "Force daily arena tick",
         "description": "Resolve today's bracket immediately",
         "location": "subreddit",
@@ -41,9 +34,6 @@
         "endpoint": "/internal/menu/arena-force-tick"
       }
     ]
-  },
-  "forms": {
-    "exampleForm": "/internal/form/example-submit"
   },
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install"
