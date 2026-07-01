@@ -1,6 +1,6 @@
 # PHASE 7 — Art & polish
-Status: not-started
-Harness: —
+Status: in-progress
+Harness: Claude Code (Fable 5)
 
 ## Goal
 Pipeline silhouette IA-proof, remplacement des placeholders, fit viewport/mobile, onboarding clair.
