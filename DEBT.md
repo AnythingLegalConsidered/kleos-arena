@@ -22,6 +22,8 @@ Sévérités : `high` · `medium` · `low`.
 | DEBT-010 | medium | Settlements non rejouables : throw après 20 retries, pas de dead-letter | Review 2026-06-19 | deferred |
 | DEBT-011 | medium | Routes économiques acceptent `anonymous` ; pas de rate limit | Review 2026-06-19 | closed |
 | DEBT-012 | low | Scaffold Devvit visible (menu "Example form", routes `increment`/`decrement`) | Review 2026-06-19 | open |
+| DEBT-013 | low | `SETTLEMENT_ATTEMPTS`/`delay()` dupliqués entre modules serveur | Review 2026-06-19 | open |
+| DEBT-014 | low | Bumps mineurs `hono`/`vite` disponibles, non appliqués | Review 2026-06-19 | watching |
 
 ---
 
@@ -138,3 +140,14 @@ soumission — le menu « Example form » (`devvit.json:30`) et les routes `incr
 (`src/server/routes/api.ts:60-98`) sont du code de démarrage inutilisé.
 **Où** : `devvit.json:30`, `src/server/routes/api.ts:60-98` (review, finding T6).
 **Action** : à retirer en Phase 7/8.
+
+## DEBT-013 — Retry/délai de settlement dupliqués
+**Problème** : la constante `SETTLEMENT_ATTEMPTS` et la fonction `delay()` sont redéfinies dans
+plusieurs modules serveur au lieu d'être partagées. Pure duplication, aucun comportement incorrect.
+**Où** : `dailyArena.ts`, `stableStore.ts` (review, finding SUMMARY-kimi T4).
+**Action** : extraire dans un module commun. Non bloquant, cosmétique.
+
+## DEBT-014 — Bumps mineurs `hono`/`vite` disponibles
+**Problème** : des versions mineures plus récentes de `hono`/`vite` existent, non appliquées.
+**Où** : `package.json` (review, finding SUMMARY-kimi T9).
+**Action** : surveillé avec `DEBT-005`, réévaluer avant submission (Phase 8).
