@@ -64,7 +64,13 @@ arena.get('/', async (c) => {
 });
 
 arena.post('/bet', async (c) => {
-  const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+  const username = await reddit.getCurrentUsername();
+  if (!username) {
+    return c.json<ArenaErrorResponse>(
+      { type: 'error', error: 'authentication required' },
+      401
+    );
+  }
   const request = parseBetRequest(await c.req.json().catch(() => null));
   if (!request) {
     return c.json<ArenaErrorResponse>(
@@ -88,7 +94,13 @@ arena.post('/bet', async (c) => {
 });
 
 arena.post('/enter', async (c) => {
-  const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+  const username = await reddit.getCurrentUsername();
+  if (!username) {
+    return c.json<ArenaErrorResponse>(
+      { type: 'error', error: 'authentication required' },
+      401
+    );
+  }
   const stable = await loadOrCreateStable(username);
   try {
     const {

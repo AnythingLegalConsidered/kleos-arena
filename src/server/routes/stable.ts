@@ -21,7 +21,13 @@ stable.get('/', async (c) => {
 });
 
 stable.post('/action', async (c) => {
-  const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+  const username = await reddit.getCurrentUsername();
+  if (!username) {
+    return c.json<StableActionResponse>(
+      { type: 'error', error: 'authentication required' },
+      401
+    );
+  }
   const action = parseAction(await c.req.json().catch(() => null));
   if (!action) {
     return c.json<StableActionResponse>(
