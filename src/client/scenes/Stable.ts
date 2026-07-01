@@ -30,6 +30,7 @@ const CARD_W = 236;
 const CARD_H = 286;
 const CARD_GAP = 18;
 const CARD_TOP = 112;
+const LEADERBOARD_ROWS = 5;
 
 // Player-facing stable management. The server is authoritative for every spend:
 // the client posts an action and re-renders from the returned stable, so the UI
@@ -132,7 +133,7 @@ export class Stable extends Scene {
     this.text(
       width / 2,
       60,
-      `or ${this.stable.gold}    faveur ${this.stable.favor}`,
+      `or ${this.stable.gold}    faveur ${this.stable.favor}    série ${this.stable.streak}j`,
       18,
       '#ffd700',
       0.5
@@ -155,6 +156,8 @@ export class Stable extends Scene {
       this.renderCard(g, x, CARD_TOP);
       x += CARD_W + CARD_GAP;
     }
+
+    this.renderLeaderboard(x + CARD_GAP, CARD_TOP, width);
 
     const arenaOpen = this.arenaStatus?.status === 'open';
     const fought = this.arenaStatus?.qualifier != null;
@@ -273,6 +276,26 @@ export class Stable extends Scene {
       () => void this.sendAction({ action: 'heal', gladiatorId: g.id }),
       injured && gold >= healCost(g)
     );
+  }
+
+  private renderLeaderboard(x: number, y: number, width: number): void {
+    const standings = this.arenaStatus?.standings ?? [];
+    if (standings.length === 0) return;
+    const panelW = Math.max(0, width - x - 16);
+    if (panelW < 100) return; // no room in the margin at this viewport size
+
+    this.text(x, y, 'CLASSEMENT', 13, '#e8dcc0');
+    let ry = y + 22;
+    for (const standing of standings.slice(0, LEADERBOARD_ROWS)) {
+      this.text(
+        x,
+        ry,
+        `#${standing.rank} ${standing.name}`,
+        12,
+        standing.kind === 'player' ? '#ffd700' : '#b7a98a'
+      );
+      ry += 18;
+    }
   }
 
   private renderMessage(message: string, retry = false): void {
