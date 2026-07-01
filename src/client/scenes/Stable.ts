@@ -32,6 +32,13 @@ const CARD_GAP = 18;
 const CARD_TOP = 112;
 const LEADERBOARD_ROWS = 5;
 
+// Below this width the 3-cards-in-a-row layout (~744px wide) cannot fit, so
+// the scene switches to a stacked compact layout sized for 360x600 portrait.
+const COMPACT_BREAK = 820;
+const COMPACT_CARD_H = 124;
+const COMPACT_CARD_GAP = 8;
+const COMPACT_CARD_TOP = 82;
+
 // Player-facing stable management. The server is authoritative for every spend:
 // the client posts an action and re-renders from the returned stable, so the UI
 // can never drift from the persisted truth.
@@ -128,6 +135,12 @@ export class Stable extends Scene {
     if (!this.stable) return;
     this.root.removeAll(true);
     const { width, height } = this.scale;
+    if (width < COMPACT_BREAK) this.renderCompact(width, height);
+    else this.renderWide(width, height);
+  }
+
+  private renderWide(width: number, height: number): void {
+    if (!this.stable) return;
 
     this.text(width / 2, 30, 'KLEOS · ÉCURIE', 26, '#e8dcc0', 0.5);
     this.text(
@@ -159,22 +172,16 @@ export class Stable extends Scene {
 
     this.renderLeaderboard(x + CARD_GAP, CARD_TOP, width);
 
-    const arenaOpen = this.arenaStatus?.status === 'open';
-    const fought = this.arenaStatus?.qualifier != null;
-    const fightLabel = arenaOpen
-      ? fought
-        ? 'REJOUER QUALIF'
-        : 'JOUER QUALIF'
-      : 'ARÈNE RÉSOLUE';
+    const fight = this.fightButtonState();
     this.button(
       width / 2 - 200,
       height - 72,
       190,
       46,
-      fightLabel,
+      fight.label,
       0x1d6b2f,
       () => void this.startFight(),
-      arenaOpen && !this.busy
+      fight.enabled
     );
     this.button(
       width / 2 + 10,
@@ -192,6 +199,86 @@ export class Stable extends Scene {
       this.text(width / 2, height - 92, dailyLine, 13, '#b7a98a', 0.5, 0.5);
     if (this.status)
       this.text(width / 2, height - 16, this.status, 14, '#ff8a8a', 0.5);
+  }
+
+  // Compact layout for narrow viewports: header, three stacked gladiator
+  // cards, and the action footer all fit inside 360x600 with no scrolling.
+  // The leaderboard stays a wide-margin extra and is not rendered here.
+  private renderCompact(width: number, height: number): void {
+    if (!this.stable) return;
+
+    this.text(width / 2, 8, 'KLEOS · ÉCURIE', 15, '#e8dcc0', 0.5);
+    this.text(
+      width / 2,
+      32,
+      `or ${this.stable.gold}    faveur ${this.stable.favor}    série ${this.stable.streak}j`,
+      12,
+      '#ffd700',
+      0.5
+    );
+    if (this.arenaStatus) {
+      this.text(
+        width / 2,
+        51,
+        `${this.arenaStatus.god.name} · ${this.arenaStatus.god.description} · ${this.arenaStatus.participantCount} engagés`,
+        10,
+        '#b7a98a',
+        0.5,
+        0,
+        width - 20
+      );
+    }
+
+    const cardW = Math.min(width - 16, 520);
+    const cardX = (width - cardW) / 2;
+    let y = COMPACT_CARD_TOP;
+    for (const g of this.stable.roster) {
+      this.renderCompactCard(g, cardX, y, cardW);
+      y += COMPACT_CARD_H + COMPACT_CARD_GAP;
+    }
+
+    const fight = this.fightButtonState();
+    const btnW = (width - 30) / 2;
+    const btnY = height - 76;
+    this.button(
+      10,
+      btnY,
+      btnW,
+      38,
+      fight.label,
+      0x1d6b2f,
+      () => void this.startFight(),
+      fight.enabled,
+      12
+    );
+    this.button(
+      20 + btnW,
+      btnY,
+      btnW,
+      38,
+      'PARIER · VOTER',
+      0x9d3d1c,
+      () => this.scene.start('Betting'),
+      this.arenaStatus !== null && !this.busy,
+      12
+    );
+
+    const dailyLine = this.dailySummary();
+    if (dailyLine)
+      this.text(width / 2, btnY - 8, dailyLine, 10, '#b7a98a', 0.5, 1, width - 20);
+    if (this.status)
+      this.text(width / 2, height - 30, this.status, 12, '#ff8a8a', 0.5);
+  }
+
+  private fightButtonState(): { label: string; enabled: boolean } {
+    const arenaOpen = this.arenaStatus?.status === 'open';
+    const fought = this.arenaStatus?.qualifier != null;
+    const label = arenaOpen
+      ? fought
+        ? 'REJOUER QUALIF'
+        : 'JOUER QUALIF'
+      : 'ARÈNE RÉSOLUE';
+    return { label, enabled: arenaOpen && !this.busy };
   }
 
   private renderCard(g: Gladiator, x: number, y: number): void {
@@ -278,6 +365,93 @@ export class Stable extends Scene {
     );
   }
 
+  // One stacked card: name + weapon on top, one column per attribute
+  // (label/value/pips over its buy button), then perk + heal side by side.
+  // Every button keeps a 32px minimum touch dimension.
+  private renderCompactCard(g: Gladiator, x: number, y: number, w: number): void {
+    const bg = this.add
+      .rectangle(x, y, w, COMPACT_CARD_H, 0x231d14, 0.92)
+      .setOrigin(0, 0)
+      .setStrokeStyle(2, 0x3a3022);
+    this.root.add(bg);
+
+    const gold = this.stable?.gold ?? 0;
+    this.text(x + 10, y + 8, g.name, 13, '#e8dcc0');
+    this.text(
+      x + w - 10,
+      y + 11,
+      `${weaponLabel(g.weapon)} · don ${attrShort(g.aptitude)}`,
+      10,
+      '#b7a98a',
+      1
+    );
+
+    const colW = (w - 20) / 3;
+    ATTR_ROWS.forEach((row, index) => {
+      const cx = x + 10 + index * colW;
+      this.text(
+        cx + 2,
+        y + 30,
+        `${row.label} ${g.attributes[row.key]} ${pips(g.perks[row.key])}`,
+        10,
+        '#e8dcc0'
+      );
+      const cost = attributeCost(g, row.key);
+      this.button(
+        cx,
+        y + 46,
+        colW - 6,
+        32,
+        `+${cost}`,
+        0x35506b,
+        () =>
+          void this.sendAction({
+            action: 'attr',
+            gladiatorId: g.id,
+            attr: row.key,
+          }),
+        gold >= cost,
+        12
+      );
+    });
+
+    const perkAttr = g.aptitude;
+    const pCost = perkCost(g, perkAttr);
+    const perkLabel =
+      pCost === null ? 'perk au max' : `perk ${attrShort(perkAttr)}  +${pCost}`;
+    const perkW = Math.round((w - 26) * 0.58);
+    this.button(
+      x + 10,
+      y + 84,
+      perkW,
+      32,
+      perkLabel,
+      0x6b4d1d,
+      () =>
+        void this.sendAction({
+          action: 'perk',
+          gladiatorId: g.id,
+          attr: perkAttr,
+        }),
+      pCost !== null && gold >= pCost,
+      11
+    );
+
+    const injured = g.injury > 0;
+    const healLabel = injured ? `soin  -${healCost(g)}` : 'sain';
+    this.button(
+      x + 16 + perkW,
+      y + 84,
+      w - 26 - perkW,
+      32,
+      healLabel,
+      0x6b2f2f,
+      () => void this.sendAction({ action: 'heal', gladiatorId: g.id }),
+      injured && gold >= healCost(g),
+      11
+    );
+  }
+
   private renderLeaderboard(x: number, y: number, width: number): void {
     const standings = this.arenaStatus?.standings ?? [];
     if (standings.length === 0) return;
@@ -334,13 +508,18 @@ export class Stable extends Scene {
     size: number,
     color: string,
     originX = 0,
-    originY = 0
+    originY = 0,
+    maxWidth?: number
   ): void {
     const t = this.add
       .text(x, y, str, {
         fontFamily: 'Arial Black',
         fontSize: `${size}px`,
         color,
+        ...(maxWidth !== undefined && {
+          wordWrap: { width: maxWidth },
+          align: originX === 0.5 ? 'center' : originX === 1 ? 'right' : 'left',
+        }),
       })
       .setOrigin(originX, originY);
     this.root.add(t);
@@ -354,7 +533,8 @@ export class Stable extends Scene {
     label: string,
     fill: number,
     onClick: () => void,
-    enabled = true
+    enabled = true,
+    fontSize = 14
   ): void {
     const color = enabled ? fill : 0x2a2620;
     const rect = this.add
@@ -364,7 +544,7 @@ export class Stable extends Scene {
     const txt = this.add
       .text(x + w / 2, y + h / 2, label, {
         fontFamily: 'Arial Black',
-        fontSize: '14px',
+        fontSize: `${fontSize}px`,
         color: enabled ? '#ffffff' : '#6a6258',
       })
       .setOrigin(0.5);

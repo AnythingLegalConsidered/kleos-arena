@@ -14,7 +14,7 @@ import { Betting } from './scenes/Betting';
 const config: Phaser.Types.Core.GameConfig = {
   type: AUTO,
   parent: 'game-container',
-  backgroundColor: '#028af8',
+  backgroundColor: '#14110d',
   scale: {
     // Keep a fixed game resolution but automatically scale it to fit within the available
     // web-view / device while maintaining aspect ratio.

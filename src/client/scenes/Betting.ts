@@ -17,6 +17,9 @@ const MUTED = '#a99a80';
 const ORANGE = '#e56a2e';
 const GOLD = '#e7ba55';
 const STAKES = [...BET_STAKES];
+// Below this width the side-by-side team panels become unreadable, so each
+// match card stacks its two teams vertically (mobile portrait fit).
+const STACKED_BREAK = 640;
 const BET_ERRORS: Record<string, string> = {
   'not enough gold': 'Pas assez d’or',
   'betting is closed': 'Le marché est fermé',
@@ -151,6 +154,7 @@ export class Betting extends Scene {
       );
     });
 
+    const stacked = width < STACKED_BREAK;
     const matches = this.arena.featuredMatches.slice(0, 3);
     const top = 160;
     const available = Math.max(330, height - top - 72);
@@ -158,15 +162,14 @@ export class Betting extends Scene {
       156,
       (available - 20) / Math.max(1, matches.length)
     );
-    matches.forEach((match, index) =>
-      this.renderMatch(
-        match,
-        left,
-        top + index * (cardHeight + 10),
-        contentWidth,
-        cardHeight
-      )
-    );
+    matches.forEach((match, index) => {
+      const y = top + index * (cardHeight + 10);
+      if (stacked) {
+        this.renderMatchStacked(match, left, y, contentWidth, cardHeight);
+      } else {
+        this.renderMatch(match, left, y, contentWidth, cardHeight);
+      }
+    });
 
     const payout = this.arena.latestBetPayout;
     const footer =
@@ -174,14 +177,29 @@ export class Betting extends Scene {
       (payout === null
         ? 'La mise est débitée maintenant · le gain arrive au tick'
         : `Dernier règlement de paris  +${payout} or`);
-    this.text(
-      width / 2,
-      height - 48,
-      footer,
-      13,
-      this.status ? IVORY : MUTED,
-      0.5
-    );
+    if (stacked) {
+      // Narrow viewports: the centered footer would run under the back
+      // button, so it sits to its right instead, wrapped.
+      const footerText = this.add
+        .text(150, height - 36, footer, {
+          fontFamily: 'Trebuchet MS',
+          fontSize: '10px',
+          fontStyle: 'bold',
+          color: this.status ? IVORY : MUTED,
+          wordWrap: { width: width - 166 },
+        })
+        .setOrigin(0, 0.5);
+      this.root.add(footerText);
+    } else {
+      this.text(
+        width / 2,
+        height - 48,
+        footer,
+        13,
+        this.status ? IVORY : MUTED,
+        0.5
+      );
+    }
     this.button(24, height - 52, 116, 32, '← ÉCURIE', 0x30261a, () => {
       this.scene.start('Stable');
     });
@@ -252,6 +270,126 @@ export class Betting extends Scene {
       0.5,
       0.5,
       'Georgia'
+    );
+  }
+
+  // Narrow-viewport variant of renderMatch: the two teams stack vertically,
+  // each as a full-width row (name · odds · vote button, fervor bar below).
+  private renderMatchStacked(
+    match: FeaturedMatchSummary,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): void {
+    const placed = this.betFor(match.id);
+    const card = this.add
+      .rectangle(x, y, width, height, 0x211910, 0.96)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0x5b452d);
+    this.root.add(card);
+
+    this.text(
+      x + width / 2,
+      y + 10,
+      `DUEL ${match.id.split(':').at(-1)}`,
+      9,
+      MUTED,
+      0.5,
+      0.5
+    );
+    const rowHeight = (height - 26) / 2;
+    this.renderTeamRow(
+      match,
+      match.teamA,
+      x + 8,
+      y + 18,
+      width - 16,
+      rowHeight,
+      placed?.teamId === match.teamA.id
+    );
+    this.renderTeamRow(
+      match,
+      match.teamB,
+      x + 8,
+      y + 22 + rowHeight,
+      width - 16,
+      rowHeight,
+      placed?.teamId === match.teamB.id
+    );
+  }
+
+  private renderTeamRow(
+    match: FeaturedMatchSummary,
+    team: FeaturedTeamSummary,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    selected: boolean
+  ): void {
+    const placed = this.betFor(match.id);
+    const enabled =
+      this.arena?.status === 'open' &&
+      !this.busy &&
+      !placed &&
+      (this.stable?.gold ?? 0) >= this.selectedStake;
+    const panel = this.add
+      .rectangle(x, y, width, height, selected ? 0x663019 : 0x17120d, 1)
+      .setOrigin(0, 0)
+      .setStrokeStyle(selected ? 2 : 1, selected ? 0xe56a2e : 0x3b2f21);
+    this.root.add(panel);
+
+    const buttonWidth = 96;
+    const buttonHeight = Math.min(32, height - 6);
+    const buttonX = x + width - buttonWidth - 6;
+    const textY = y + height / 2 - 7;
+    const oddsLabel = `x${team.odds.toFixed(2)}`;
+    // Phaser does not clip text: trim long stable names so they never run
+    // under the odds (~7px per bold 12px char).
+    const nameWidth = buttonX - 14 - (x + 12) - oddsLabel.length * 8;
+    this.text(
+      x + 12,
+      textY,
+      truncate(team.name.toUpperCase(), Math.max(4, Math.floor(nameWidth / 7))),
+      12,
+      IVORY,
+      0,
+      0.5
+    );
+    this.text(buttonX - 10, textY, oddsLabel, 13, GOLD, 1, 0.5);
+
+    const barY = y + height - 9;
+    const barWidth = buttonX - 6 - (x + 12);
+    this.root.add(
+      this.add.rectangle(x + 12, barY, barWidth, 5, 0x33291e).setOrigin(0, 0)
+    );
+    this.root.add(
+      this.add
+        .rectangle(
+          x + 12,
+          barY,
+          barWidth * Math.min(1, team.fervor / FERVOR_CAP),
+          5,
+          0xe56a2e
+        )
+        .setOrigin(0, 0)
+    );
+
+    const label = selected
+      ? `VOTÉ · ${placed?.stake}`
+      : placed
+        ? 'PRIS'
+        : `VOTER · ${this.selectedStake}`;
+    this.button(
+      buttonX,
+      y + (height - buttonHeight) / 2,
+      buttonWidth,
+      buttonHeight,
+      label,
+      selected ? 0x9d3d1c : 0x5c351f,
+      () => void this.placeBet(match, team),
+      enabled
     );
   }
 
@@ -388,6 +526,10 @@ export class Betting extends Scene {
 
 function frenchBetError(error: string): string {
   return BET_ERRORS[error] ?? error;
+}
+
+function truncate(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, Math.max(1, max - 1))}…`;
 }
 
 function lighten(color: number): number {
