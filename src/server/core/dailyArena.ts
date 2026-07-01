@@ -395,7 +395,19 @@ async function withBettingLock<T>(
   try {
     return await action();
   } finally {
-    if ((await redis.get(key)) === token) await redis.del(key);
+    // WATCH the key so the check-then-delete commits atomically: without it,
+    // another process's lock (re-acquired after our TTL expired) could be
+    // deleted out from under it between the get and the del (DEBT-009).
+    const transaction = await redis.watch(key);
+    if ((await redis.get(key)) === token) {
+      await transaction.multi();
+      await transaction.del(key);
+      // A null exec() means the key changed between watch and exec (someone
+      // else already claimed or cleared it) — nothing to do, not an error.
+      await transaction.exec();
+    } else {
+      await transaction.unwatch();
+    }
   }
 }
 
