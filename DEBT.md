@@ -21,9 +21,10 @@ Sévérités : `high` · `medium` · `low`.
 | DEBT-009 | low | `withBettingLock` libère le lock via `get`+`del` non atomique | Review 2026-06-19 | closed |
 | DEBT-010 | medium | Settlements non rejouables : throw après 20 retries, pas de dead-letter | Review 2026-06-19 | deferred |
 | DEBT-011 | medium | Routes économiques acceptent `anonymous` ; pas de rate limit | Review 2026-06-19 | closed |
-| DEBT-012 | low | Scaffold Devvit visible (menu "Example form", routes `increment`/`decrement`) | Review 2026-06-19 | open |
+| DEBT-012 | low | Scaffold Devvit visible (menu "Example form", routes `increment`/`decrement`) | Review 2026-06-19 | closed |
 | DEBT-013 | low | `SETTLEMENT_ATTEMPTS`/`delay()` dupliqués entre modules serveur | Review 2026-06-19 | open |
 | DEBT-014 | low | Bumps mineurs `hono`/`vite` disponibles, non appliqués | Review 2026-06-19 | watching |
+| DEBT-015 | medium | Verify manuels Phase 7 différés (playtest mobile réel, testeur neuf) | Phase 7 | open |
 
 ---
 
@@ -140,6 +141,12 @@ soumission — le menu « Example form » (`devvit.json:30`) et les routes `incr
 (`src/server/routes/api.ts:60-98`) sont du code de démarrage inutilisé.
 **Où** : `devvit.json:30`, `src/server/routes/api.ts:60-98` (review, finding T6).
 **Action** : à retirer en Phase 7/8.
+**Résolu** (Phase 7, commit `3586d8a`) : retirés le menu « Example form » + mapping `forms`
+(`devvit.json`, `routes/forms.ts` supprimé), les routes compteur `/api/init`/`increment`/
+`decrement` + leurs types partagés (le `/init` n'était appelé que par la scène template morte),
+les scènes Game/GameOver inatteignables (rien n'y naviguait depuis MainMenu → Stable) et
+`public/snoo.png` (le splash réécrit en Phase 7 n'y référence plus). Périmètre un peu plus large
+que le ticket (scènes + `/init`) : même unité de scaffold, retirée d'un bloc.
 
 ## DEBT-013 — Retry/délai de settlement dupliqués
 **Problème** : la constante `SETTLEMENT_ATTEMPTS` et la fonction `delay()` sont redéfinies dans
@@ -151,3 +158,14 @@ plusieurs modules serveur au lieu d'être partagées. Pure duplication, aucun co
 **Problème** : des versions mineures plus récentes de `hono`/`vite` existent, non appliquées.
 **Où** : `package.json` (review, finding SUMMARY-kimi T9).
 **Action** : surveillé avec `DEBT-005`, réévaluer avant submission (Phase 8).
+
+## DEBT-015 — Verify manuels Phase 7 différés
+**Problème** : la passe viewport/onboarding de la Phase 7 (commits `a67b5ae`, `d851e65`) est
+validée par les 4 verify auto et par calcul de géométrie, mais **pas à l'œil sur appareil réel**.
+Deux Verify de phase restent non satisfaits : (a) jouable sur mobile réel sans scroll ni
+chevauchement (layouts compacts Stable < 820 px et Betting < 640 px jamais affichés sur un
+téléphone), (b) un testeur neuf joue un cycle complet sans explication externe.
+**Où** : `phases/PHASE-7-art.md` §Verify.
+**Action** : `npm run dev` (playtest Reddit) sur téléphone + un cobaye humain avant de passer
+la Phase 7 `done`. Aggravant : le sub-agent qui a produit le layout Stable compact a été coupé
+en cours de route (travail terminé à la main) — contrôle visuel d'autant plus nécessaire.

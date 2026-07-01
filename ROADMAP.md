@@ -13,7 +13,7 @@ Design : `CONCEPT.md`. Protocole d'exécution : `AGENTS.md`.
 | 4 | Loop quotidienne & arène | 2, 3 | done |
 | 5 | Pari=vote & ferveur | 4 | done |
 | 6 | Rétention (streak, leaderboard) | 3 | done |
-| 7 | Art & polish | 2 | not-started |
+| 7 | Art & polish | 2 | in-progress |
 | 8 | Submission | tout | not-started |
 
 ## Chemin critique
