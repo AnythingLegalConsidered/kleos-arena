@@ -12,6 +12,8 @@ import {
   parseStable,
   perkCost,
   PERK_MAX,
+  recordParticipation,
+  STABLE_VERSION,
 } from "../../src/shared/stable";
 import type { Stable } from "../../src/shared/stable";
 
@@ -153,5 +155,59 @@ describe("Verify 2 — persistence restores identically", () => {
     expect(parseStable(null)).toBeNull();
     expect(parseStable("not json")).toBeNull();
     expect(parseStable(JSON.stringify({ version: 999, roster: [] }))).toBeNull();
+  });
+
+  it("migrates a v1 blob by seeding the streak fields", () => {
+    const s = createDefaultStable("legacy", "Old");
+    const v1: Record<string, unknown> = { ...s, version: 1 };
+    delete v1.streak;
+    delete v1.lastPlayedDay;
+    const restored = parseStable(JSON.stringify(v1));
+    expect(restored?.version).toBe(STABLE_VERSION);
+    expect(restored?.streak).toBe(0);
+    expect(restored?.lastPlayedDay).toBeNull();
+    expect(restored?.roster).toEqual(s.roster);
+  });
+});
+
+describe("Phase 6 — daily streak", () => {
+  it("starts a fresh stable at zero, then opens the streak on first play", () => {
+    const s = createDefaultStable("streak", "S");
+    expect(s.streak).toBe(0);
+    expect(s.lastPlayedDay).toBeNull();
+    expect(recordParticipation(s, "2026-06-22")).toBe(true);
+    expect(s.streak).toBe(1);
+    expect(s.lastPlayedDay).toBe("2026-06-22");
+  });
+
+  it("increments on consecutive days", () => {
+    const s = createDefaultStable("streak", "S");
+    recordParticipation(s, "2026-06-22");
+    recordParticipation(s, "2026-06-23");
+    recordParticipation(s, "2026-06-24");
+    expect(s.streak).toBe(3);
+    expect(s.lastPlayedDay).toBe("2026-06-24");
+  });
+
+  it("resets to one after a skipped day", () => {
+    const s = createDefaultStable("streak", "S");
+    recordParticipation(s, "2026-06-22");
+    recordParticipation(s, "2026-06-23");
+    recordParticipation(s, "2026-06-25"); // skipped the 24th
+    expect(s.streak).toBe(1);
+  });
+
+  it("is idempotent within the same day", () => {
+    const s = createDefaultStable("streak", "S");
+    expect(recordParticipation(s, "2026-06-22")).toBe(true);
+    expect(recordParticipation(s, "2026-06-22")).toBe(false);
+    expect(s.streak).toBe(1);
+  });
+
+  it("crosses a month boundary as a consecutive day", () => {
+    const s = createDefaultStable("streak", "S");
+    recordParticipation(s, "2026-06-30");
+    recordParticipation(s, "2026-07-01");
+    expect(s.streak).toBe(2);
   });
 });

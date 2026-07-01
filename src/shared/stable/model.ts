@@ -7,7 +7,7 @@ import type { Attributes, UnitSpec, Vec2, WeaponArchetype } from "../sim";
 import { createRng, type Rng } from "../sim";
 import type { ActionResult, AttributeKey, Gladiator, Stable } from "./types";
 
-export const STABLE_VERSION = 1;
+export const STABLE_VERSION = 2;
 
 const START_GOLD = 120;
 const START_FAVOR = 3;
@@ -41,7 +41,35 @@ export function createDefaultStable(ownerId: string, name: string): Stable {
   const rng = createRng(hashSeed(ownerId));
   const roster: Gladiator[] = [];
   for (let i = 0; i < ROSTER_SIZE; i++) roster.push(recruit(rng, `${ownerId}-g${i}`));
-  return { version: STABLE_VERSION, ownerId, name, gold: START_GOLD, favor: START_FAVOR, roster };
+  return {
+    version: STABLE_VERSION,
+    ownerId,
+    name,
+    gold: START_GOLD,
+    favor: START_FAVOR,
+    roster,
+    streak: 0,
+    lastPlayedDay: null,
+  };
+}
+
+// --- retention (Phase 6) --------------------------------------------------
+
+/**
+ * Record that the owner entered the arena on `day` (UTC YYYY-MM-DD). A back-to-back
+ * day grows the streak; a skipped day (or first ever play) resets it to 1. Idempotent
+ * within a day: replaying the same `day` is a no-op. Returns true on the day's first play.
+ */
+export function recordParticipation(stable: Stable, day: string): boolean {
+  if (stable.lastPlayedDay === day) return false;
+  stable.streak = stable.lastPlayedDay === previousDay(day) ? stable.streak + 1 : 1;
+  stable.lastPlayedDay = day;
+  return true;
+}
+
+/** The UTC day before `day` (YYYY-MM-DD). Local to avoid a daily→stable layering cycle. */
+function previousDay(day: string): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 }
 
 /** Roll a fresh gladiator: random aptitude, random weapon, modest base attributes. */
@@ -142,7 +170,16 @@ export function parseStable(json: string | null | undefined): Stable | null {
   } catch {
     return null;
   }
-  return isStable(parsed) ? parsed : null;
+  const migrated = migrateStable(parsed);
+  return isStable(migrated) ? migrated : null;
+}
+
+/** Bring an older blob up to the current schema. Unknown shapes pass through untouched. */
+function migrateStable(o: unknown): unknown {
+  if (typeof o !== "object" || o === null) return o;
+  if (!("version" in o) || o.version !== 1) return o;
+  // v1 → v2: streak fields added (Phase 6); the rest of the blob is preserved.
+  return { ...o, version: STABLE_VERSION, streak: 0, lastPlayedDay: null };
 }
 
 function isStable(o: unknown): o is Stable {
@@ -152,6 +189,9 @@ function isStable(o: unknown): o is Stable {
   if (!("name" in o) || typeof o.name !== "string") return false;
   if (!("gold" in o) || typeof o.gold !== "number") return false;
   if (!("favor" in o) || typeof o.favor !== "number") return false;
+  if (!("streak" in o) || typeof o.streak !== "number") return false;
+  if (!("lastPlayedDay" in o) || (o.lastPlayedDay !== null && typeof o.lastPlayedDay !== "string"))
+    return false;
   if (!("roster" in o) || !Array.isArray(o.roster)) return false;
   return o.roster.every(isGladiator);
 }

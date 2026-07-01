@@ -12,6 +12,7 @@ export {
   buyPerk,
   healCost,
   heal,
+  recordParticipation,
   effectiveAttributes,
   gladiatorToUnitSpec,
   parseStable,

@@ -13,7 +13,8 @@ import {
   getCurrentArenaStatus,
   placeCurrentBet,
 } from '../core/dailyArena';
-import { loadOrCreateStable } from '../core/stableStore';
+import { recordParticipation } from '../../shared/stable';
+import { loadOrCreateStable, mutateStableAtomically } from '../core/stableStore';
 
 export const arena = new Hono();
 
@@ -95,11 +96,18 @@ arena.post('/enter', async (c) => {
       entry,
       participantCount,
     } = await enterCurrentArena(stable);
+    // Entering counts as playing today: grow the streak under WATCH so a
+    // concurrent settlement can't clobber it (DEBT-001). Idempotent per day.
+    const { stable: updated } = await mutateStableAtomically(username, (st) => {
+      recordParticipation(st, daily.day);
+      return { ok: true };
+    });
     return c.json<ArenaEntryResponse>({
       type: 'arena-entry',
       day: daily.day,
       god: godById(daily.godId),
       participantCount,
+      streak: updated.streak,
       qualifier: {
         opponentName: entry.qualifier.opponent.name,
         won: entry.qualifier.won,

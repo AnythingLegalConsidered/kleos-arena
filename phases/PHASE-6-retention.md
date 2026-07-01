@@ -1,6 +1,6 @@
 # PHASE 6 — Rétention (streak, leaderboard)
-Status: not-started
-Harness: —
+Status: in-progress
+Harness: Claude Code
 
 ## Goal
 Streak quotidien + leaderboard du jour. (Stretch : flair par rang.)
@@ -13,7 +13,7 @@ Streak quotidien + leaderboard du jour. (Stretch : flair par rang.)
 - `src/server` (streak, agrégation leaderboard), `src/client` (affichage).
 
 ## Tasks
-- [ ] Streak : jours consécutifs de participation (incrément / reset sur jour manqué).
+- [x] Streak : jours consécutifs de participation (incrément / reset sur jour manqué).
 - [ ] Leaderboard du jour : tri par résultat de bracket.
 - [ ] (Stretch) Flair communautaire attribué selon le rang.
 

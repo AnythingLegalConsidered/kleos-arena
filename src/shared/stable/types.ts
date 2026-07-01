@@ -34,6 +34,10 @@ export type Stable = {
   gold: number;
   favor: number;
   roster: Gladiator[];
+  /** Consecutive days played; grows on back-to-back days, resets on a gap (Phase 6). */
+  streak: number;
+  /** UTC day (YYYY-MM-DD) of the last arena entry, or null if never played. */
+  lastPlayedDay: string | null;
 };
 
 /** Outcome of a spend action — the caller owns the (mutated) stable. */

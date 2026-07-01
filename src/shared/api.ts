@@ -81,6 +81,8 @@ export type ArenaEntryResponse = {
   day: string;
   god: GodDefinition;
   participantCount: number;
+  /** Consecutive-days streak after counting today's entry (Phase 6). */
+  streak: number;
   qualifier: ArenaQualifierSummary & { config: BattleConfig };
 };
 
