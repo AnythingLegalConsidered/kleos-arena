@@ -1,86 +1,129 @@
+/* Inline feed view — must stay instant: pure CSS, no images, no web fonts. */
+
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
-  color: #000000;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
 }
 
 .app {
   display: flex;
-  position: relative;
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: clamp(8px, 2.4vh, 16px);
   height: 100vh;
-  margin: 0;
-  gap: 16px;
+  padding: 12px 16px;
+  text-align: center;
+  color: #e8dcc0;
+  font-family: 'Trebuchet MS', Verdana, sans-serif;
+  /* Warm near-black arena: orange glow up top, diagonal hatching like the game. */
+  background:
+    radial-gradient(circle at 50% -20%, rgba(229, 106, 46, 0.22), transparent 60%),
+    repeating-linear-gradient(
+      -55deg,
+      transparent 0,
+      transparent 46px,
+      rgba(45, 33, 22, 0.55) 46px,
+      rgba(45, 33, 22, 0.55) 48px
+    ),
+    linear-gradient(180deg, #14110d 0%, #100d09 100%);
 }
 
-.snoo {
-  object-fit: contain;
-  width: 50%;
-  max-width: 250px;
-  margin: 0 auto;
-}
-
-.content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+.greeting {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a99a80;
 }
 
 .title {
-  font-size: 1.5em;
-  font-weight: bold;
-  text-align: center;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(42px, 14vmin, 78px);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  /* Re-centre letter-spaced text (trailing tracking skews it left). */
+  margin-left: 0.16em;
+  line-height: 1;
+  color: #e8dcc0;
+  text-shadow: 0 0 26px rgba(229, 106, 46, 0.35);
 }
 
-.description {
-  font-size: 1em;
-  text-align: center;
-  color: #5c6c74;
+/* Thin gold line with a central diamond — Aegean divider, pure CSS. */
+.laurel {
+  position: relative;
+  width: min(220px, 60vw);
+  height: 9px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(231, 186, 85, 0.85) 18%,
+    rgba(231, 186, 85, 0.85) 82%,
+    transparent
+  );
+  background-size: 100% 1px;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
-.code {
-  background-color: #e5ebee;
-  padding: 2px 4px;
-  border-radius: 4px;
+.laurel::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: #e7ba55;
+}
+
+.tagline {
+  max-width: 36ch;
+  font-size: clamp(13px, 1.6vmin + 8px, 17px);
+  font-weight: 700;
+  line-height: 1.35;
+  color: #eadfca;
+}
+
+.loop-line {
+  max-width: 44ch;
+  font-size: clamp(10px, 1vmin + 6px, 13px);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  color: #e7ba55;
 }
 
 .start-button {
-  background-color: #d93900;
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  border: none;
-  padding: 6px 16px;
-  height: 28px;
-  font-size: 1.1em;
-  border-radius: 12px;
+  margin-top: clamp(2px, 1vh, 8px);
+  padding: 12px 30px;
+  border: 1px solid #e7ba55;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #ff7a2f, #b6491d);
+  color: #fdf3e0;
+  font-family: 'Trebuchet MS', Verdana, sans-serif;
+  font-size: clamp(14px, 1.4vmin + 8px, 17px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
 }
 
-.footer {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 12px;
-  font-size: 0.8em;
-  color: #666666;
+.start-button:hover,
+.start-button:focus-visible {
+  filter: brightness(1.12);
 }
 
-.docs-link {
-  cursor: pointer;
-}
-
-.divider {
-  color: rgba(0, 0, 0, 0.1);
+.start-button:active {
+  transform: translateY(1px);
 }
