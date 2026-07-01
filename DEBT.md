@@ -17,10 +17,11 @@ Sévérités : `high` · `medium` · `low`.
 | DEBT-005 | medium | 37 vulns `npm audit` (dont 6 high) héritées du scaffold | Phase 0 | watching |
 | DEBT-006 | low | Parallélisation des phases via git worktrees inexploitée | Process | deferred |
 | DEBT-007 | medium | Équilibrage paris : favori clampé à 1.2 = +EV ; « marché auto-équilibré » ≠ impl | Phase 5 | open |
-| DEBT-008 | medium | Claim `'creating'` du post quotidien sans TTL → zombie sur crash | Review 2026-06-19 | open |
-| DEBT-009 | low | `withBettingLock` libère le lock via `get`+`del` non atomique | Review 2026-06-19 | open |
+| DEBT-008 | medium | Claim `'creating'` du post quotidien sans TTL → zombie sur crash | Review 2026-06-19 | closed |
+| DEBT-009 | low | `withBettingLock` libère le lock via `get`+`del` non atomique | Review 2026-06-19 | closed |
 | DEBT-010 | medium | Settlements non rejouables : throw après 20 retries, pas de dead-letter | Review 2026-06-19 | deferred |
-| DEBT-011 | medium | Routes économiques acceptent `anonymous` ; pas de rate limit | Review 2026-06-19 | open |
+| DEBT-011 | medium | Routes économiques acceptent `anonymous` ; pas de rate limit | Review 2026-06-19 | closed |
+| DEBT-012 | low | Scaffold Devvit visible (menu "Example form", routes `increment`/`decrement`) | Review 2026-06-19 | open |
 
 ---
 
@@ -95,12 +96,23 @@ serverless entre le claim et la création du post laisse un claim zombie qui blo
 re-création du post du jour.
 **Où** : `dailyArena.ts:242-267` (review, finding T3).
 **Action** : remplacer le field hash `'creating'` par une clé `SET NX EX` par jour avec TTL.
+**Résolu** : le claim est désormais une clé dédiée `arena:post-claim:<day>` posée via
+`redis.set(key, 'creating', { nx: true, expiration })` (`POST_CLAIM_TTL_MS` = 60s, à côté de
+`BETTING_LOCK_TTL_MS`). Un crash entre le claim et la création du post laisse expirer la clé au
+lieu de bloquer indéfiniment. `arena.postId` (persisté par `saveArena`) reste la source de
+vérité : sur claim déjà pris, on recharge l'arène du jour et on renvoie son `postId` s'il existe,
+sinon on throw comme avant.
 
 ## DEBT-009 — `withBettingLock` libère le lock non atomiquement
 **Problème** : la libération fait `get` puis `del` en deux temps. Fenêtre où le lock d'un autre
 process peut être supprimé par erreur. Faible probabilité, pas de corruption d'or directe.
 **Où** : `dailyArena.ts:372-395` (review, finding T4).
 **Action** : libération atomique via Lua/`EVAL` si dispo, ou supprimer le `del` et laisser le TTL expirer.
+**Résolu** : le client redis Devvit (`@devvit/web@0.13.4`) n'expose pas d'`EVAL`/Lua. La libération
+passe par `WATCH`/`MULTI`/`EXEC` (même pattern que `applyBetSettlement`/`placeCurrentBet`) : `get`
+sous `WATCH`, puis `del` dans le `MULTI` si le token correspond encore. Un `exec()` qui rend `null`
+signifie que la clé a changé entre-temps (déjà reprise ou effacée par quelqu'un d'autre) — ce n'est
+pas une erreur, rien à faire de plus.
 
 ## DEBT-010 — Settlements non rejouables (pas de dead-letter)
 **Problème** : un settlement échoue définitivement après 20 retries, traité séquentiellement, sans
@@ -114,3 +126,15 @@ au harness de test serveur (`DEBT-004`), post-submission si la deadline serre.
 authentifié partage l'écurie/le solde `anonymous`. Aucun rate limit sur les routes de dépense.
 **Où** : `arena.ts:21/66/90`, `stable.ts:18/24`, `api.ts:45` (review, finding T9).
 **Action** : refuser `anonymous` sur les routes à enjeu (or, paris) ; rate limit simple sur les dépenses.
+**Résolu (version minimale)** : `POST /stable/action`, `POST /arena/bet` et `POST /arena/enter`
+renvoient désormais `401 authentication required` si `getCurrentUsername()` échoue, au lieu de
+retomber sur `'anonymous'`. Les routes de lecture pure (`GET /stable`, `GET /arena`, `/init`)
+gardent le fallback `anonymous` — pas d'enjeu économique. Rate limiting non implémenté (hors
+budget de cette passe) ; à traiter séparément si besoin.
+
+## DEBT-012 — Scaffold Devvit visible
+**Problème** : le scaffold du template Devvit est encore visible et nuit à la crédibilité d'une
+soumission — le menu « Example form » (`devvit.json:30`) et les routes `increment`/`decrement`
+(`src/server/routes/api.ts:60-98`) sont du code de démarrage inutilisé.
+**Où** : `devvit.json:30`, `src/server/routes/api.ts:60-98` (review, finding T6).
+**Action** : à retirer en Phase 7/8.
