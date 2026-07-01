@@ -38,6 +38,7 @@ arena.get('/', async (c) => {
     participantCount: status.participantCount,
     qualifier,
     result: status.latestSettlement,
+    standings: status.arena.standings,
     featuredMatches: status.featuredMatches
       .filter(
         (match) =>

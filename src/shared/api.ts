@@ -20,7 +20,7 @@ export type DecrementResponse = {
 // --- stable (Phase 3) ---
 
 import type { AttributeKey, Stable } from './stable';
-import type { ArenaSettlement, GodDefinition } from './daily';
+import type { ArenaSettlement, GodDefinition, Standing } from './daily';
 import type { ArenaBet } from './betting';
 import type { BattleConfig } from './sim';
 
@@ -58,6 +58,8 @@ export type ArenaStatusResponse = {
   participantCount: number;
   qualifier: ArenaQualifierSummary | null;
   result: ArenaSettlement | null;
+  /** Today's arena standings (Phase 6). Empty while the arena is still 'open'. */
+  standings: Standing[];
   featuredMatches: FeaturedMatchSummary[];
   bets: ArenaBet[];
   latestBetPayout: number | null;
