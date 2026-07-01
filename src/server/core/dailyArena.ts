@@ -40,8 +40,8 @@ import {
 
 const GHOSTS_KEY = 'arena:ghosts';
 const LATEST_RESOLVED_KEY = 'arena:latest-resolved';
-const POST_CLAIMS_KEY = 'arena:post-claims';
 const BETTING_LOCK_TTL_MS = 120_000;
+const POST_CLAIM_TTL_MS = 60_000;
 const SETTLEMENT_ATTEMPTS = 20;
 
 export type ArenaStatus = {
@@ -243,30 +243,33 @@ export async function openDailyArena(day: string): Promise<DailyArena> {
   const arena = await loadDailyArena(day);
   if (arena.postId) return arena;
 
-  const claimed = await redis.hSetNX(POST_CLAIMS_KEY, day, 'creating');
-  if (claimed === 0) {
-    const claimedPostId = await redis.hGet(POST_CLAIMS_KEY, day);
-    if (claimedPostId && claimedPostId !== 'creating') {
-      arena.postId = claimedPostId;
-      await saveArena(arena);
-      return arena;
-    }
+  // A dedicated key with a TTL, not a hash field: a crash between the claim
+  // and the post creation now self-heals after POST_CLAIM_TTL_MS instead of
+  // leaving a permanent 'creating' zombie that blocks re-creation (DEBT-008).
+  const claimKey = postClaimKey(day);
+  const claimed = await redis.set(claimKey, 'creating', {
+    nx: true,
+    expiration: new Date(Date.now() + POST_CLAIM_TTL_MS),
+  });
+  if (claimed !== 'OK') {
+    const reloaded = await loadDailyArena(day);
+    if (reloaded.postId) return reloaded;
     throw new Error(`daily arena post ${day} is already being created`);
   }
 
   const god = godById(arena.godId);
-  let createdPostId: string | null = null;
   try {
     const post = await createPost(`KLEOS · Arène du ${day} · ${god.name}`);
-    createdPostId = post.id;
-    await redis.hSet(POST_CLAIMS_KEY, { [day]: createdPostId });
-    arena.postId = createdPostId;
+    arena.postId = post.id;
     await saveArena(arena);
     return arena;
-  } catch (error) {
-    if (!createdPostId) await redis.hDel(POST_CLAIMS_KEY, [day]);
-    throw error;
+  } finally {
+    await redis.del(claimKey);
   }
+}
+
+function postClaimKey(day: string): string {
+  return `arena:post-claim:${day}`;
 }
 
 export async function runDailyTick(
