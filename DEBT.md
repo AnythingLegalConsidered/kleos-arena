@@ -95,6 +95,11 @@ de la force pure et ne bougent pas avec le volume de mises.
 **Où** : `oddsForConfig` ([src/shared/betting/model.ts](src/shared/betting/model.ts#L18-L28)).
 **Action** : décision de design (tuning bornes / vig, ou réécrire le contrat). Non bloquant v1.
 **Note review 2026-06-19** : les 3 reviewers confirment le favori +EV → bumpé `low` → `medium` (finding T8).
+**Analyse chiffrée 2026-07-02** : ~4 800 sims — le problème dépasse le ticket : la sim est quasi
+déterministe (p = 1,000 dès ~4 pts de share), EV favori mesurée **+40 % à +98 %** sur toute la
+gamme (le clamp 1,2 n'est que +20 %). Proposition à 3 options (A vig/clamp — écartée par les
+chiffres ; **B cotes par simulation — recommandée** ; C parimutuel — backlog) dans
+[phases/PHASE-7-art.md](phases/PHASE-7-art.md) §Handoff. Statut inchangé : décision humaine requise.
 
 ---
 
@@ -184,3 +189,6 @@ téléphone), (b) un testeur neuf joue un cycle complet sans explication externe
 **Action** : `npm run dev` (playtest Reddit) sur téléphone + un cobaye humain avant de passer
 la Phase 7 `done`. Aggravant : le sub-agent qui a produit le layout Stable compact a été coupé
 en cours de route (travail terminé à la main) — contrôle visuel d'autant plus nécessaire.
+**Étendu 2026-07-02** : la seconde passe onboarding (overlay « ? » du Stable, ligne ferveur de
+Betting, scène Recap) est elle aussi vérifiée par calcul uniquement — à couvrir par le même
+playtest avant `done`.
