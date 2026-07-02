@@ -129,6 +129,15 @@ export class Betting extends Scene {
       0,
       'Trebuchet MS'
     );
+    // The design promise (CONCEPT: la ferveur bornée) spelled out in-game.
+    this.text(
+      width / 2,
+      78,
+      'La ferveur fait pencher les duels serrés · jamais les écrasés',
+      width < STACKED_BREAK ? 9 : 11,
+      MUTED,
+      0.5
+    );
     this.text(left, 92, `TRÉSOR  ${this.stable.gold} OR`, 16, GOLD);
     this.text(left + contentWidth, 92, 'MISE', 12, MUTED, 1);
 
