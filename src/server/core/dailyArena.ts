@@ -32,6 +32,7 @@ import type { BattleConfig, UnitSpec, WeaponArchetype } from '../../shared/sim';
 import { parseStable } from '../../shared/stable';
 import type { Stable } from '../../shared/stable';
 import { createPost } from './post';
+import { SETTLEMENT_ATTEMPTS, delay } from './settlement';
 import {
   applyArenaSettlement,
   loadOrCreateStable,
@@ -42,7 +43,6 @@ const GHOSTS_KEY = 'arena:ghosts';
 const LATEST_RESOLVED_KEY = 'arena:latest-resolved';
 const BETTING_LOCK_TTL_MS = 120_000;
 const POST_CLAIM_TTL_MS = 60_000;
-const SETTLEMENT_ATTEMPTS = 20;
 
 export type ArenaStatus = {
   arena: DailyArena;
@@ -409,10 +409,6 @@ async function withBettingLock<T>(
       await transaction.unwatch();
     }
   }
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function loadDailyArena(day: string): Promise<DailyArena> {

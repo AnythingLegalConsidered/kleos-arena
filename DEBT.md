@@ -22,7 +22,7 @@ Sévérités : `high` · `medium` · `low`.
 | DEBT-010 | medium | Settlements non rejouables : throw après 20 retries, pas de dead-letter | Review 2026-06-19 | deferred |
 | DEBT-011 | medium | Routes économiques acceptent `anonymous` ; pas de rate limit | Review 2026-06-19 | closed |
 | DEBT-012 | low | Scaffold Devvit visible (menu "Example form", routes `increment`/`decrement`) | Review 2026-06-19 | closed |
-| DEBT-013 | low | `SETTLEMENT_ATTEMPTS`/`delay()` dupliqués entre modules serveur | Review 2026-06-19 | open |
+| DEBT-013 | low | `SETTLEMENT_ATTEMPTS`/`delay()` dupliqués entre modules serveur | Review 2026-06-19 | closed |
 | DEBT-014 | low | Bumps mineurs `hono`/`vite` disponibles, non appliqués | Review 2026-06-19 | watching |
 | DEBT-015 | medium | Verify manuels Phase 7 différés (playtest mobile réel, testeur neuf) | Phase 7 | open |
 
@@ -153,6 +153,9 @@ que le ticket (scènes + `/init`) : même unité de scaffold, retirée d'un bloc
 plusieurs modules serveur au lieu d'être partagées. Pure duplication, aucun comportement incorrect.
 **Où** : `dailyArena.ts`, `stableStore.ts` (review, finding SUMMARY-kimi T4).
 **Action** : extraire dans un module commun. Non bloquant, cosmétique.
+**Résolu** (Phase 7) : `SETTLEMENT_ATTEMPTS` et `delay()` vivent désormais dans
+[src/server/core/settlement.ts](src/server/core/settlement.ts), importés par `dailyArena.ts` et
+`stableStore.ts`. Valeurs et comportement inchangés (les 4 verify auto passent à l'identique).
 
 ## DEBT-014 — Bumps mineurs `hono`/`vite` disponibles
 **Problème** : des versions mineures plus récentes de `hono`/`vite` existent, non appliquées.

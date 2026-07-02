@@ -2,6 +2,7 @@ import { redis } from '@devvit/web/server';
 import { createDefaultStable, parseStable } from '../../shared/stable';
 import { applySettlement, type ArenaSettlement } from '../../shared/daily';
 import type { ActionResult, Stable } from '../../shared/stable';
+import { SETTLEMENT_ATTEMPTS, delay } from './settlement';
 
 export function stableKey(username: string): string {
   return `stable:${username}`;
@@ -22,8 +23,6 @@ export async function loadOrCreateStable(username: string): Promise<Stable> {
 export async function saveStable(stable: Stable): Promise<void> {
   await redis.set(stableKey(stable.ownerId), JSON.stringify(stable));
 }
-
-const SETTLEMENT_ATTEMPTS = 20;
 
 // Stable spends (gold) must read-modify-write under WATCH: the same key is
 // credited transactionally by settlements, so a plain load-mutate-save would
@@ -78,8 +77,4 @@ export async function applyArenaSettlement(
     await delay(50);
   }
   throw new Error('arena settlement is busy');
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
