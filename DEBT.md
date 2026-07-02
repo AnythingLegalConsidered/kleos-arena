@@ -73,6 +73,14 @@ sont les risques (DEBT-001/002/003). Le domaine pur, lui, est bien couvert.
 **Problème** : `npm audit --omit=dev` → 37 vulns (dont 6 high), chaînes Hono/Devvit/Vite.
 Les fixes sortent des versions figées par le scaffold ou sont cassantes.
 **Action** : surveillé via `.github/dependabot.yml`. Réévaluer avant submission (Phase 8).
+**Réévaluation 2026-07-02** : 32 vulns (2 low, 24 moderate, **6 high**). Les 6 high :
+- `hono` (path traversal `serve-static` Windows + Set-Cookie Lambda — aucune des deux ne
+  s'applique au runtime Devvit) → **fix non cassant : hono 4.12.27** (patch).
+- `vite` (launch-editor NTLM + `server.fs.deny` bypass, dev-time) → **fix non cassant : vite 8.1.3** (minor).
+- `@devvit/cli`, `tmp`, `ws`, `protobufjs` → fix = `devvit@1.0.0` (**major**, couplé plateforme)
+  ou downgrade `@devvit/web` : à NE PAS toucher avant la deadline.
+Recommandation : bumper `hono` + `vite` (+ éventuellement `@devvit/*` 0.13.4→0.13.6, patch)
+en Phase 8 **après feu vert humain**, rejouer les 4 verify + un playtest. Aucun bump appliqué.
 
 ## DEBT-006 — Parallélisation des phases inexploitée
 **Problème** : `ROADMAP.md` marque les phases 6 et 7 parallélisables, mais le workflow reste
@@ -161,6 +169,10 @@ plusieurs modules serveur au lieu d'être partagées. Pure duplication, aucun co
 **Problème** : des versions mineures plus récentes de `hono`/`vite` existent, non appliquées.
 **Où** : `package.json` (review, finding SUMMARY-kimi T9).
 **Action** : surveillé avec `DEBT-005`, réévaluer avant submission (Phase 8).
+**Réévaluation 2026-07-02** (`npm outdated`) : `hono` 4.12.21→4.12.27 (patch, corrige un high
+DEBT-005), `vite` 8.0.13→8.1.3 (minor, corrige un high), `@devvit/*` 0.13.4→0.13.6 (patch),
+`phaser` 4.1.0→4.2.0 (minor — ne pas bumper sans re-tester le rendu), outillage dev
+(eslint/prettier/typescript-eslint) sans enjeu. Décision et application couplées à DEBT-005.
 
 ## DEBT-015 — Verify manuels Phase 7 différés
 **Problème** : la passe viewport/onboarding de la Phase 7 (commits `a67b5ae`, `d851e65`) est
