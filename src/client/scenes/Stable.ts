@@ -48,6 +48,7 @@ export class Stable extends Scene {
   private root!: Phaser.GameObjects.Container;
   private busy = false;
   private status = '';
+  private helpOpen = false;
 
   private readonly onResize = (): void => this.render();
 
@@ -137,12 +138,14 @@ export class Stable extends Scene {
     const { width, height } = this.scale;
     if (width < COMPACT_BREAK) this.renderCompact(width, height);
     else this.renderWide(width, height);
+    if (this.helpOpen) this.renderHelp(width, height);
   }
 
   private renderWide(width: number, height: number): void {
     if (!this.stable) return;
 
     this.text(width / 2, 30, 'KLEOS · ÉCURIE', 26, '#e8dcc0', 0.5);
+    this.renderHelpButton(width - 60, 22, 40);
     this.text(
       width / 2,
       60,
@@ -208,6 +211,7 @@ export class Stable extends Scene {
     if (!this.stable) return;
 
     this.text(width / 2, 8, 'KLEOS · ÉCURIE', 15, '#e8dcc0', 0.5);
+    this.renderHelpButton(width - 40, 6, 32);
     this.text(
       width / 2,
       32,
@@ -470,6 +474,78 @@ export class Stable extends Scene {
       );
       ry += 18;
     }
+  }
+
+  // Square "?" toggle that opens the first-contact explainer (Phase 7
+  // onboarding friction a: gold/attributes/perks were never explained).
+  private renderHelpButton(x: number, y: number, size: number): void {
+    this.button(x, y, size, size, '?', 0x4a3f2d, () => {
+      this.helpOpen = true;
+      this.render();
+    });
+  }
+
+  // Full-screen overlay on top of the current layout; tap anywhere to close.
+  private renderHelp(width: number, height: number): void {
+    const dim = this.add
+      .rectangle(0, 0, width, height, 0x000000, 0.78)
+      .setOrigin(0, 0)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        this.helpOpen = false;
+        this.render();
+      });
+
+    const panelW = Math.min(width - 24, 460);
+    const body = this.add
+      .text(
+        width / 2,
+        0,
+        [
+          'OR — la monnaie : dépensée ici, gagnée au',
+          'bracket nocturne et aux paris.',
+          'FOR dégâts · AGI vitesse & esquive · RES vie.',
+          '« +N » monte l’attribut d’un point pour N or',
+          '(de plus en plus cher).',
+          'DON — l’attribut fétiche du gladiateur :',
+          'moitié prix.',
+          'PERK ●○○ — paliers de bonus sur le don.',
+          'SOIN — un blessé perd de ses attributs',
+          'tant qu’il n’est pas soigné.',
+          'FAVEUR — la reconnaissance des dieux,',
+          'gagnée en haut de bracket.',
+          'SÉRIE — tes jours d’arène consécutifs.',
+        ].join('\n'),
+        {
+          fontFamily: 'Arial Black',
+          fontSize: '12px',
+          color: '#e8dcc0',
+          lineSpacing: 7,
+          wordWrap: { width: panelW - 36 },
+        }
+      )
+      .setOrigin(0.5, 0);
+    const titleSize = 16;
+    const panelH = body.height + titleSize + 74;
+    const panelY = Math.max(12, (height - panelH) / 2);
+    const panel = this.add
+      .rectangle(width / 2, panelY, panelW, panelH, 0x231d14, 0.98)
+      .setOrigin(0.5, 0)
+      .setStrokeStyle(2, 0x3a3022);
+    body.setY(panelY + titleSize + 34);
+
+    this.root.add(dim);
+    this.root.add(panel);
+    this.text(width / 2, panelY + 16, 'L’ÉCURIE EN BREF', titleSize, '#e8dcc0', 0.5);
+    this.root.add(body);
+    this.text(
+      width / 2,
+      panelY + panelH - 22,
+      'toucher pour fermer',
+      10,
+      '#b7a98a',
+      0.5
+    );
   }
 
   private renderMessage(message: string, retry = false): void {
