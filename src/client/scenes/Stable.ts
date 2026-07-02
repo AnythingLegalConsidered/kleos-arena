@@ -19,6 +19,7 @@ import type {
   StableActionResponse,
   StableResponse,
 } from '../../shared/api';
+import { claimRecapPresentation } from './Recap';
 
 const ATTR_ROWS: { key: AttributeKey; label: string }[] = [
   { key: 'force', label: 'FOR' },
@@ -77,6 +78,11 @@ export class Stable extends Scene {
       const arenaData: ArenaStatusResponse = await arenaRes.json();
       this.stable = stableData.stable;
       this.arenaStatus = arenaData;
+      // Stage the overnight bracket once per session before the hub shows.
+      if (arenaData.result && claimRecapPresentation()) {
+        this.scene.start('Recap', { stable: stableData.stable, arena: arenaData });
+        return;
+      }
       this.status = '';
       this.render();
     } catch {
